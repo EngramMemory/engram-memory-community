@@ -232,9 +232,34 @@ cat > openclaw-memory-config.json << EOF
 }
 EOF
 
+# Setup context system
+SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+echo ""
+echo -e "${BLUE}Setting up context system...${NC}"
+
+# Install Python dependencies for context system
+if [ -f "$SKILL_DIR/.venv/bin/pip" ]; then
+    "$SKILL_DIR/.venv/bin/pip" install click pyyaml httpx > /dev/null 2>&1
+    echo -e "${GREEN}Context system dependencies installed${NC}"
+elif command -v pip3 &> /dev/null; then
+    pip3 install click pyyaml httpx > /dev/null 2>&1
+    echo -e "${GREEN}Context system dependencies installed${NC}"
+fi
+
+# Add bin/ to PATH if not already there
+ENGRAM_BIN="$SKILL_DIR/bin"
+if ! echo "$PATH" | grep -q "$ENGRAM_BIN"; then
+    for rcfile in "$HOME/.bashrc" "$HOME/.zshrc"; do
+        if [ -f "$rcfile" ]; then
+            echo "export PATH=\"$ENGRAM_BIN:\$PATH\"" >> "$rcfile"
+        fi
+    done
+    echo -e "${GREEN}Added engram commands to PATH (restart shell or source rc file)${NC}"
+fi
+
 # Success message
 echo ""
-echo -e "${GREEN}Engram Memory setup complete!${NC}"
+echo -e "${GREEN}Engram setup complete!${NC}"
 echo ""
 echo -e "${YELLOW}Next Steps:${NC}"
 echo ""
@@ -242,25 +267,30 @@ echo "1. Add the following to your ~/.openclaw/openclaw.json:"
 echo ""
 echo -e "${BLUE}$(cat openclaw-memory-config.json)${NC}"
 echo ""
-echo "2. Restart OpenClaw gateway:"
+echo "2. Add SOUL rules to your agent's system prompt:"
+echo "   Copy the rules from docs/SOUL-RULES.md into your SOUL.md"
+echo "   This teaches your agent to use memory proactively."
+echo ""
+echo "3. Restart OpenClaw gateway:"
 echo "   openclaw gateway restart"
 echo ""
-echo "3. Test memory functions in your agent:"
+echo "4. Test in your agent:"
 echo "   memory_store \"I love persistent memory!\" --category preference"
 echo "   memory_search \"memory preferences\""
+echo "   context_ask \"How does authentication work?\""
+echo ""
+echo -e "${YELLOW}Context System:${NC}"
+echo "   Initialize a project:  engram-context init /path/to/project --template web-app"
+echo "   Search context:        engram-context find \"authentication\""
+echo "   Ask questions:         engram-ask \"How does the API work?\""
 echo ""
 echo -e "${YELLOW}Service URLs:${NC}"
 echo "   Qdrant Web UI: http://localhost:6333/dashboard"
 echo "   FastEmbed API: http://localhost:11435/docs"
 echo ""
-echo -e "${YELLOW}Management Commands:${NC}"
-echo "   Start services:  docker-compose up -d"
-echo "   Stop services:   docker-compose down"
-echo "   View logs:       docker-compose logs -f"
-echo "   Status:          docker-compose ps"
+echo -e "${YELLOW}Management:${NC}"
+echo "   Start:   docker-compose up -d"
+echo "   Stop:    docker-compose down"
+echo "   Logs:    docker-compose logs -f"
 echo ""
-echo -e "${YELLOW}Data Location:${NC}"
-echo "   Setup files:     $SETUP_DIR"
-echo "   Vector data:     Docker volume 'qdrant_storage'"
-echo ""
-echo -e "${GREEN}Your agent now has persistent memory across sessions.${NC}"
+echo -e "${GREEN}Your agent now has persistent memory and context awareness.${NC}"

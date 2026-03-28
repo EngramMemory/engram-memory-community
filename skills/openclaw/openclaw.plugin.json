@@ -1,7 +1,7 @@
 {
   "name": "engram",
   "version": "1.0.0",
-  "description": "Engram - Persistent semantic memory using FastEmbed + Qdrant",
+  "description": "Engram - Persistent semantic memory and context management",
   "type": "python",
   "main": "plugin.py",
   "tools": [
@@ -27,7 +27,7 @@
             "default": 0.5,
             "minimum": 0.0,
             "maximum": 1.0,
-            "description": "Importance score (0-1, higher = more likely to be recalled)"
+            "description": "Importance score (0-1)"
           }
         },
         "required": ["text"]
@@ -51,17 +51,17 @@
           "limit": {
             "type": "integer",
             "default": 10,
-            "description": "Maximum number of results to return"
+            "description": "Maximum number of results"
           },
           "min_score": {
             "type": "number",
             "default": 0.0,
-            "description": "Minimum similarity score threshold (0-1)"
+            "description": "Minimum similarity score (0-1)"
           },
           "category": {
             "type": "string",
             "enum": ["preference", "fact", "decision", "entity", "other"],
-            "description": "Filter by memory category (optional)"
+            "description": "Filter by category"
           }
         },
         "required": ["query"]
@@ -69,6 +69,71 @@
       "command": {
         "script": "scripts/memory_search_wrapper.py",
         "args": ["--query", "{query}", "--limit", "{limit}", "--min-score", "{min_score}"]
+      }
+    },
+    {
+      "name": "memory_forget",
+      "description": "Delete a memory by ID or by searching for the closest match",
+      "implementation": "python_exec",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "memory_id": {
+            "type": "string",
+            "description": "UUID of memory to delete"
+          },
+          "query": {
+            "type": "string",
+            "description": "Search query — deletes the best match"
+          }
+        }
+      },
+      "command": {
+        "script": "plugin.py",
+        "args": ["memory_forget", "{\"query\": \"{query}\", \"memory_id\": \"{memory_id}\"}"]
+      }
+    },
+    {
+      "name": "context_search",
+      "description": "Search the current project's .context/ files for information about architecture, patterns, APIs, and workflows",
+      "implementation": "python_exec",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "What to search for in context files"
+          },
+          "limit": {
+            "type": "integer",
+            "default": 5,
+            "description": "Maximum results"
+          }
+        },
+        "required": ["query"]
+      },
+      "command": {
+        "script": "plugin.py",
+        "args": ["context_search", "{\"query\": \"{query}\", \"limit\": \"{limit}\"}"]
+      }
+    },
+    {
+      "name": "context_ask",
+      "description": "Ask a natural language question about the current project's codebase and get an answer from context files",
+      "implementation": "python_exec",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string",
+            "description": "Natural language question about the codebase"
+          }
+        },
+        "required": ["question"]
+      },
+      "command": {
+        "script": "plugin.py",
+        "args": ["context_ask", "{\"question\": \"{question}\"}"]
       }
     }
   ]
