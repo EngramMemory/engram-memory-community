@@ -91,6 +91,68 @@ memory_forget(memory_id="uuid-string")
 - **entity** — People, projects, organizations, relationships
 - **other** — Miscellaneous information that doesn't fit above
 
+## Context System
+
+Engram includes a context management system that gives your agent structured knowledge about any codebase. Initialize a project, and your agent can search and query its architecture, patterns, and APIs.
+
+### Context Commands
+
+#### engram-context — Core Management
+```bash
+# Initialize context for a project
+engram-context init /path/to/project --template web-app
+engram-context init /path/to/project --template python-api
+engram-context init /path/to/project --template generic
+
+# Build search index
+engram-context index
+
+# Search context files
+engram-context find "authentication patterns"
+
+# Check status
+engram-context status
+```
+
+#### engram-ask — Natural Language Queries
+```bash
+engram-ask "How does authentication work?"
+engram-ask "Where are the API endpoints defined?"
+engram-ask interactive
+```
+
+#### engram-semantic — Embedding-Based Search
+```bash
+engram-semantic find "user login process"
+engram-semantic index
+engram-semantic status
+```
+
+### Project Templates
+
+| Template | Best for |
+|----------|----------|
+| `web-app` | Full-stack web apps (React/Vue + Node/Python + DB) |
+| `python-api` | Python API servers (FastAPI, Django) |
+| `generic` | Any project type |
+
+### Context Structure
+
+Each project gets a `.context/` directory:
+
+```
+.context/
+├── metadata.yaml       # Project configuration
+├── architecture.md     # System architecture
+├── patterns.md         # Code patterns and standards
+├── apis.md             # API documentation
+├── development.md      # Development workflows
+├── troubleshooting.md  # Common issues and solutions
+└── index.db            # Search index (auto-generated)
+```
+
+All context queries are scoped to the current project.
+
 ## Architecture
 
 ```

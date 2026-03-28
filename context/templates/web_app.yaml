@@ -1,0 +1,991 @@
+# Web Application Template for Engram Context System
+name: "web-app"
+description: "Full-stack web application with frontend, backend, and database"
+version: "1.0"
+
+files:
+  architecture.md: |
+    # System Architecture
+
+    ## Overview
+    This is a full-stack web application with separate frontend and backend services.
+
+    ## Service Architecture
+    ```
+    ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+    │   Frontend      │────▶│   Backend API   │────▶│   Database      │
+    │   (React/Vue)   │     │   (Node.js/     │     │   (PostgreSQL/  │
+    │   Port 3000     │     │    Python)      │     │    MySQL)       │
+    │                 │     │   Port 8000     │     │   Port 5432     │
+    └─────────────────┘     └─────────────────┘     └─────────────────┘
+              │                       │                       │
+              │                       │                       │
+              ▼                       ▼                       ▼
+    ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+    │   Static Files  │     │   File Storage  │     │   Cache/Session │
+    │   (nginx/CDN)   │     │   (Local/S3)    │     │   (Redis)       │
+    └─────────────────┘     └─────────────────┘     └─────────────────┘
+    ```
+
+    ## Component Details
+
+    ### Frontend
+    - **Technology**: React.js/Vue.js/Angular
+    - **Port**: 3000 (development), 80/443 (production)
+    - **Responsibilities**:
+      - User interface rendering
+      - Client-side routing
+      - State management
+      - API communication
+
+    ### Backend API  
+    - **Technology**: Node.js/Express, Python/FastAPI, or similar
+    - **Port**: 8000 (development), internal (production)
+    - **Responsibilities**:
+      - Business logic processing
+      - Database interactions
+      - Authentication & authorization
+      - API endpoint serving
+
+    ### Database
+    - **Technology**: PostgreSQL, MySQL, or MongoDB
+    - **Port**: 5432 (PostgreSQL), 3306 (MySQL), 27017 (MongoDB)
+    - **Responsibilities**:
+      - Data persistence
+      - ACID compliance
+      - Backup and recovery
+
+    ## Authentication Flow
+    1. User submits credentials to backend `/auth/login`
+    2. Backend validates against database
+    3. JWT token issued with user claims
+    4. Frontend stores token (localStorage/httpOnly cookies)
+    5. Subsequent requests include token in Authorization header
+    6. Backend validates token and extracts user context
+
+    ## Data Flow
+    1. User interaction triggers frontend action
+    2. Frontend makes API request to backend
+    3. Backend processes request and queries database
+    4. Database returns data to backend
+    5. Backend formats response and returns to frontend
+    6. Frontend updates UI with new data
+
+    ## Security Considerations
+    - HTTPS/TLS encryption for all traffic
+    - JWT token expiration and refresh
+    - Input validation and sanitization
+    - SQL injection prevention
+    - XSS protection
+    - CSRF tokens for state-changing operations
+
+    ## Deployment Architecture
+    ```
+    Internet → Load Balancer → nginx → Frontend (Static)
+                            → nginx → Backend API → Database
+    ```
+
+  patterns.md: |
+    # Development Patterns
+
+    ## Project Structure
+
+    ### Frontend Structure
+    ```
+    frontend/
+    ├── src/
+    │   ├── components/     # Reusable UI components
+    │   ├── pages/         # Page-level components
+    │   ├── hooks/         # Custom React hooks
+    │   ├── services/      # API communication
+    │   ├── utils/         # Utility functions
+    │   ├── store/         # Global state management
+    │   ├── styles/        # CSS/SCSS files
+    │   └── assets/        # Images, fonts, etc.
+    ├── public/            # Static files
+    ├── package.json       # Dependencies
+    └── webpack.config.js  # Build configuration
+    ```
+
+    ### Backend Structure
+    ```
+    backend/
+    ├── src/
+    │   ├── controllers/   # Request handlers
+    │   ├── models/        # Database models
+    │   ├── routes/        # API route definitions
+    │   ├── middleware/    # Custom middleware
+    │   ├── services/      # Business logic
+    │   ├── utils/         # Helper functions
+    │   └── config/        # Configuration files
+    ├── migrations/        # Database migrations
+    ├── tests/            # Test files
+    └── package.json      # Dependencies
+    ```
+
+    ## Authentication Patterns
+
+    ### JWT Token Flow
+    ```javascript
+    // Frontend: Login request
+    const loginUser = async (credentials) => {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(credentials)
+      });
+      
+      const { token, user } = await response.json();
+      localStorage.setItem('token', token);
+      return { token, user };
+    };
+
+    // Frontend: Authenticated requests
+    const apiCall = async (url, options = {}) => {
+      const token = localStorage.getItem('token');
+      return fetch(url, {
+        ...options,
+        headers: {
+          ...options.headers,
+          'Authorization': `Bearer ${token}`
+        }
+      });
+    };
+    ```
+
+    ### Backend Token Validation
+    ```javascript
+    // Node.js/Express middleware
+    const authenticateToken = (req, res, next) => {
+      const authHeader = req.headers['authorization'];
+      const token = authHeader && authHeader.split(' ')[1];
+      
+      if (!token) {
+        return res.sendStatus(401);
+      }
+      
+      jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+        if (err) return res.sendStatus(403);
+        req.user = user;
+        next();
+      });
+    };
+    ```
+
+    ## API Patterns
+
+    ### RESTful Endpoint Structure
+    ```
+    GET    /api/v1/users          # List all users
+    POST   /api/v1/users          # Create new user  
+    GET    /api/v1/users/:id      # Get specific user
+    PUT    /api/v1/users/:id      # Update user
+    DELETE /api/v1/users/:id      # Delete user
+    ```
+
+    ### Error Response Format
+    ```json
+    {
+      "error": {
+        "code": "VALIDATION_ERROR",
+        "message": "Invalid input data",
+        "details": {
+          "email": "Email is required",
+          "password": "Password must be at least 8 characters"
+        }
+      },
+      "timestamp": "2024-03-22T10:30:00Z",
+      "path": "/api/v1/users"
+    }
+    ```
+
+    ### Success Response Format  
+    ```json
+    {
+      "data": { /* response data */ },
+      "message": "Operation successful",
+      "pagination": {
+        "page": 1,
+        "limit": 20,
+        "total": 150,
+        "pages": 8
+      }
+    }
+    ```
+
+    ## Frontend Component Patterns
+
+    ### React Component Structure
+    ```javascript
+    // Functional component with hooks
+    import React, { useState, useEffect } from 'react';
+
+    const UserProfile = ({ userId }) => {
+      const [user, setUser] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const [error, setError] = useState(null);
+
+      useEffect(() => {
+        fetchUser();
+      }, [userId]);
+
+      const fetchUser = async () => {
+        try {
+          setLoading(true);
+          const response = await apiCall(`/api/v1/users/${userId}`);
+          const userData = await response.json();
+          setUser(userData.data);
+        } catch (err) {
+          setError(err.message);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      if (loading) return <div>Loading...</div>;
+      if (error) return <div>Error: {error}</div>;
+      if (!user) return <div>User not found</div>;
+
+      return (
+        <div className="user-profile">
+          <h1>{user.name}</h1>
+          <p>{user.email}</p>
+        </div>
+      );
+    };
+    ```
+
+    ## Database Patterns
+
+    ### Model Definition (Sequelize/TypeORM)
+    ```javascript
+    const User = sequelize.define('User', {
+      id: {
+        type: DataTypes.INTEGER,
+        primaryKey: true,
+        autoIncrement: true
+      },
+      email: {
+        type: DataTypes.STRING,
+        allowNull: false,
+        unique: true,
+        validate: { isEmail: true }
+      },
+      password: {
+        type: DataTypes.STRING,
+        allowNull: false
+      },
+      createdAt: DataTypes.DATE,
+      updatedAt: DataTypes.DATE
+    });
+    ```
+
+    ### Migration Pattern
+    ```javascript
+    module.exports = {
+      up: async (queryInterface, Sequelize) => {
+        await queryInterface.createTable('Users', {
+          id: {
+            type: Sequelize.INTEGER,
+            primaryKey: true,
+            autoIncrement: true
+          },
+          email: {
+            type: Sequelize.STRING,
+            allowNull: false,
+            unique: true
+          },
+          // ... other fields
+        });
+      },
+      
+      down: async (queryInterface) => {
+        await queryInterface.dropTable('Users');
+      }
+    };
+    ```
+
+  apis.md: |
+    # API Documentation
+
+    ## Authentication Endpoints
+
+    ### POST /api/auth/login
+    User login with credentials.
+
+    **Request:**
+    ```json
+    {
+      "email": "user@example.com",
+      "password": "password123"
+    }
+    ```
+
+    **Response (200):**
+    ```json
+    {
+      "data": {
+        "token": "eyJhbGciOiJIUzI1NiIs...",
+        "user": {
+          "id": 1,
+          "email": "user@example.com",
+          "name": "John Doe"
+        }
+      },
+      "message": "Login successful"
+    }
+    ```
+
+    ### POST /api/auth/logout
+    User logout (invalidate token).
+
+    **Headers:**
+    ```
+    Authorization: Bearer <token>
+    ```
+
+    **Response (200):**
+    ```json
+    {
+      "message": "Logout successful"
+    }
+    ```
+
+    ### GET /api/auth/me
+    Get current user information.
+
+    **Headers:**
+    ```
+    Authorization: Bearer <token>
+    ```
+
+    **Response (200):**
+    ```json
+    {
+      "data": {
+        "id": 1,
+        "email": "user@example.com",
+        "name": "John Doe",
+        "role": "user"
+      }
+    }
+    ```
+
+    ## User Management
+
+    ### GET /api/v1/users
+    List all users (admin only).
+
+    **Query Parameters:**
+    - `page` (optional): Page number (default: 1)
+    - `limit` (optional): Items per page (default: 20)
+    - `search` (optional): Search term
+
+    **Response (200):**
+    ```json
+    {
+      "data": [
+        {
+          "id": 1,
+          "email": "user@example.com", 
+          "name": "John Doe",
+          "createdAt": "2024-03-22T10:00:00Z"
+        }
+      ],
+      "pagination": {
+        "page": 1,
+        "limit": 20,
+        "total": 50,
+        "pages": 3
+      }
+    }
+    ```
+
+    ### POST /api/v1/users
+    Create new user.
+
+    **Request:**
+    ```json
+    {
+      "email": "newuser@example.com",
+      "password": "password123",
+      "name": "Jane Doe"
+    }
+    ```
+
+    **Response (201):**
+    ```json
+    {
+      "data": {
+        "id": 2,
+        "email": "newuser@example.com",
+        "name": "Jane Doe",
+        "createdAt": "2024-03-22T11:00:00Z"
+      },
+      "message": "User created successfully"
+    }
+    ```
+
+    ### GET /api/v1/users/:id
+    Get user by ID.
+
+    **Response (200):**
+    ```json
+    {
+      "data": {
+        "id": 1,
+        "email": "user@example.com",
+        "name": "John Doe",
+        "createdAt": "2024-03-22T10:00:00Z",
+        "updatedAt": "2024-03-22T10:00:00Z"
+      }
+    }
+    ```
+
+    ### PUT /api/v1/users/:id
+    Update user information.
+
+    **Request:**
+    ```json
+    {
+      "name": "John Smith",
+      "email": "john.smith@example.com"
+    }
+    ```
+
+    **Response (200):**
+    ```json
+    {
+      "data": {
+        "id": 1,
+        "email": "john.smith@example.com",
+        "name": "John Smith",
+        "updatedAt": "2024-03-22T12:00:00Z"
+      },
+      "message": "User updated successfully"
+    }
+    ```
+
+    ### DELETE /api/v1/users/:id
+    Delete user.
+
+    **Response (200):**
+    ```json
+    {
+      "message": "User deleted successfully"
+    }
+    ```
+
+    ## Error Responses
+
+    ### 400 Bad Request
+    ```json
+    {
+      "error": {
+        "code": "VALIDATION_ERROR",
+        "message": "Invalid input data",
+        "details": {
+          "email": "Valid email is required"
+        }
+      }
+    }
+    ```
+
+    ### 401 Unauthorized
+    ```json
+    {
+      "error": {
+        "code": "UNAUTHORIZED",
+        "message": "Authentication required"
+      }
+    }
+    ```
+
+    ### 403 Forbidden
+    ```json
+    {
+      "error": {
+        "code": "FORBIDDEN",
+        "message": "Insufficient permissions"
+      }
+    }
+    ```
+
+    ### 404 Not Found
+    ```json
+    {
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "Resource not found"
+      }
+    }
+    ```
+
+    ### 500 Internal Server Error
+    ```json
+    {
+      "error": {
+        "code": "INTERNAL_ERROR",
+        "message": "An unexpected error occurred"
+      }
+    }
+    ```
+
+  development.md: |
+    # Development Workflow
+
+    ## Getting Started
+
+    ### Prerequisites
+    - Node.js (v16+)
+    - npm or yarn
+    - Database (PostgreSQL/MySQL)
+    - Git
+
+    ### Initial Setup
+    1. **Clone repository**
+       ```bash
+       git clone <repository-url>
+       cd <project-name>
+       ```
+
+    2. **Install dependencies**
+       ```bash
+       # Frontend
+       cd frontend
+       npm install
+
+       # Backend  
+       cd ../backend
+       npm install
+       ```
+
+    3. **Environment configuration**
+       ```bash
+       # Copy environment templates
+       cp .env.example .env
+       
+       # Configure database connection, JWT secret, etc.
+       ```
+
+    4. **Database setup**
+       ```bash
+       # Run migrations
+       npm run migrate
+
+       # Seed initial data (optional)
+       npm run seed
+       ```
+
+    5. **Start development servers**
+       ```bash
+       # Backend (terminal 1)
+       cd backend
+       npm run dev
+
+       # Frontend (terminal 2)  
+       cd frontend
+       npm start
+       ```
+
+    ## Development Commands
+
+    ### Frontend Commands
+    ```bash
+    npm start          # Start development server (port 3000)
+    npm run build      # Build for production
+    npm test          # Run tests
+    npm run lint      # Run ESLint
+    npm run format    # Format code with Prettier
+    ```
+
+    ### Backend Commands
+    ```bash
+    npm run dev        # Start development server with hot reload
+    npm start         # Start production server
+    npm test          # Run tests
+    npm run migrate   # Run database migrations
+    npm run seed      # Seed database with test data
+    npm run lint      # Run ESLint
+    ```
+
+    ## Testing
+
+    ### Frontend Testing
+    ```bash
+    # Unit tests with Jest
+    npm test
+
+    # Watch mode for development
+    npm test -- --watch
+
+    # Coverage report
+    npm test -- --coverage
+
+    # E2E tests with Cypress
+    npm run test:e2e
+    ```
+
+    ### Backend Testing
+    ```bash
+    # Unit and integration tests
+    npm test
+
+    # Test specific file
+    npm test -- user.test.js
+
+    # Coverage
+    npm run test:coverage
+
+    # API tests with supertest
+    npm run test:api
+    ```
+
+    ## Debugging
+
+    ### Frontend Debugging
+    - **Browser DevTools**: Use Chrome/Firefox developer tools
+    - **React DevTools**: Install React Developer Tools extension
+    - **Console Logging**: Use `console.log()` for debugging
+    - **Breakpoints**: Set breakpoints in browser debugger
+
+    ### Backend Debugging
+    - **VS Code Debugger**: Configure debugger for Node.js
+    - **Console Logging**: Use `console.log()` or proper logger
+    - **Postman/Insomnia**: Test API endpoints directly
+    - **Database Tools**: Use pgAdmin, MySQL Workbench, etc.
+
+    ## Code Quality
+
+    ### Linting and Formatting
+    ```bash
+    # ESLint for JavaScript/TypeScript
+    npm run lint
+    npm run lint:fix
+
+    # Prettier for code formatting
+    npm run format
+
+    # Pre-commit hooks with husky
+    npm run prepare
+    ```
+
+    ### Code Review Process
+    1. Create feature branch from `main`
+    2. Make changes and commit with descriptive messages
+    3. Push branch and create Pull Request
+    4. Code review by team members
+    5. Address feedback and update PR
+    6. Merge when approved and tests pass
+
+    ## Git Workflow
+
+    ### Branch Naming
+    ```
+    feature/user-authentication
+    bugfix/login-validation
+    hotfix/security-patch
+    ```
+
+    ### Commit Messages
+    ```
+    feat: add user authentication
+    fix: resolve login validation issue
+    docs: update API documentation
+    test: add unit tests for user service
+    refactor: simplify error handling
+    ```
+
+    ### Common Git Commands
+    ```bash
+    # Start new feature
+    git checkout -b feature/new-feature
+
+    # Stage and commit changes
+    git add .
+    git commit -m "feat: add new feature"
+
+    # Push to remote
+    git push origin feature/new-feature
+
+    # Update from main
+    git checkout main
+    git pull origin main
+    git checkout feature/new-feature
+    git rebase main
+    ```
+
+  troubleshooting.md: |
+    # Troubleshooting Guide
+
+    ## Common Development Issues
+
+    ### Frontend Issues
+
+    #### Build Fails
+    **Symptoms**: `npm run build` fails with errors
+
+    **Common Causes & Solutions**:
+    1. **Dependency Issues**
+       ```bash
+       # Clear node_modules and reinstall
+       rm -rf node_modules package-lock.json
+       npm install
+       ```
+
+    2. **TypeScript Errors**
+       ```bash
+       # Check TypeScript compilation
+       npx tsc --noEmit
+       
+       # Fix type errors in code
+       ```
+
+    3. **Memory Issues**
+       ```bash
+       # Increase Node.js memory limit
+       export NODE_OPTIONS="--max-old-space-size=4096"
+       npm run build
+       ```
+
+    #### Hot Reload Not Working
+    **Symptoms**: Changes not reflecting in browser
+
+    **Solutions**:
+    1. Check if files are being watched
+    2. Restart development server
+    3. Clear browser cache (Ctrl+Shift+R)
+    4. Check for syntax errors in console
+
+    ### Backend Issues
+
+    #### Database Connection Errors
+    **Symptoms**: `ECONNREFUSED` or `timeout` errors
+
+    **Diagnosis**:
+    ```bash
+    # Check if database is running
+    pg_ctl status  # PostgreSQL
+    mysqladmin ping  # MySQL
+
+    # Test connection manually
+    psql -h localhost -U username -d database_name
+    ```
+
+    **Solutions**:
+    1. **Database not running**
+       ```bash
+       # Start PostgreSQL
+       sudo systemctl start postgresql
+       
+       # Start MySQL
+       sudo systemctl start mysql
+       ```
+
+    2. **Wrong connection settings**
+       ```bash
+       # Check .env file
+       DB_HOST=localhost
+       DB_PORT=5432
+       DB_NAME=your_database
+       DB_USER=your_username
+       DB_PASSWORD=your_password
+       ```
+
+    3. **Firewall blocking connection**
+       ```bash
+       # Check PostgreSQL config
+       sudo nano /etc/postgresql/*/main/pg_hba.conf
+       
+       # Restart after changes
+       sudo systemctl restart postgresql
+       ```
+
+    #### Authentication Issues
+
+    #### JWT Token Problems
+    **Symptoms**: 401 errors, "Invalid token"
+
+    **Diagnosis**:
+    ```bash
+    # Decode JWT token (without verification)
+    node -e "console.log(JSON.stringify(JSON.parse(Buffer.from('TOKEN_PAYLOAD'.split('.')[1], 'base64')), null, 2))"
+    ```
+
+    **Solutions**:
+    1. **Token Expired**
+       - Implement token refresh mechanism
+       - Check token expiration time
+
+    2. **Wrong Secret**
+       - Verify JWT_SECRET in environment
+       - Ensure same secret for signing and verification
+
+    3. **Malformed Token**
+       - Check token format in Authorization header
+       - Ensure "Bearer " prefix
+
+    #### API Endpoint Not Found
+    **Symptoms**: 404 errors for API calls
+
+    **Diagnosis**:
+    ```bash
+    # Check route registration
+    npm run routes  # if available
+    
+    # Test with curl
+    curl -X GET http://localhost:8000/api/v1/test
+    ```
+
+    **Solutions**:
+    1. Verify route is registered in router
+    2. Check middleware order
+    3. Ensure correct HTTP method
+    4. Verify URL path spelling
+
+    ## Production Issues
+
+    ### Deployment Problems
+
+    #### Docker Container Won't Start
+    **Symptoms**: Container exits immediately
+
+    **Diagnosis**:
+    ```bash
+    # Check container logs
+    docker logs container_name
+
+    # Run container interactively
+    docker run -it image_name /bin/bash
+    ```
+
+    **Common Solutions**:
+    1. **Environment variables missing**
+       ```yaml
+       # docker-compose.yml
+       environment:
+         - NODE_ENV=production
+         - DATABASE_URL=postgresql://...
+       ```
+
+    2. **Port conflicts**
+       ```yaml
+       ports:
+         - "3000:3000"  # Ensure ports are available
+       ```
+
+    3. **Volume mount issues**
+       ```yaml
+       volumes:
+         - ./data:/app/data  # Check permissions
+       ```
+
+    #### SSL/HTTPS Issues
+    **Symptoms**: "Your connection is not private" errors
+
+    **Solutions**:
+    1. **Certificate expired**
+       ```bash
+       # Check certificate expiration
+       openssl x509 -in cert.pem -text -noout | grep "Not After"
+       ```
+
+    2. **Certificate chain incomplete**
+       - Include intermediate certificates
+       - Verify with SSL checker tools
+
+    ### Performance Issues
+
+    #### Slow Database Queries
+    **Diagnosis**:
+    ```sql
+    -- PostgreSQL slow query log
+    SELECT query, mean_time, calls 
+    FROM pg_stat_statements 
+    ORDER BY mean_time DESC;
+    ```
+
+    **Solutions**:
+    1. Add database indexes
+    2. Optimize SQL queries  
+    3. Implement connection pooling
+    4. Use database caching (Redis)
+
+    #### High Memory Usage
+    **Diagnosis**:
+    ```bash
+    # Monitor Node.js memory
+    node --inspect app.js
+    # Connect to chrome://inspect
+
+    # Monitor container memory
+    docker stats
+    ```
+
+    **Solutions**:
+    1. Identify memory leaks
+    2. Implement proper cleanup
+    3. Optimize data structures
+    4. Use streaming for large datasets
+
+    ## Quick Reference
+
+    ### Environment Variables Checklist
+    ```bash
+    # Backend
+    NODE_ENV=development
+    PORT=8000
+    DATABASE_URL=postgresql://...
+    JWT_SECRET=your-secret-key
+    
+    # Frontend
+    REACT_APP_API_URL=http://localhost:8000
+    ```
+
+    ### Common Commands
+    ```bash
+    # Restart all services
+    docker-compose down && docker-compose up -d
+
+    # View logs
+    docker-compose logs -f service_name
+
+    # Database backup
+    pg_dump database_name > backup.sql
+
+    # Database restore
+    psql database_name < backup.sql
+    ```
+
+    ### Debug URLs
+    - Frontend: http://localhost:3000
+    - Backend API: http://localhost:8000
+    - Database: localhost:5432 (PostgreSQL)
+    - Redis: localhost:6379 (if used)
+
+recommended_structure:
+  - "src/components/"
+  - "src/pages/" 
+  - "src/services/"
+  - "src/utils/"
+  - "public/"
+  - "tests/"
+
+common_dependencies:
+  frontend:
+    - react
+    - vue
+    - angular
+    - webpack
+    - babel
+  backend:
+    - express
+    - fastapi
+    - django
+    - sequelize
+    - typeorm
+  database:
+    - postgresql
+    - mysql
+    - mongodb
+    - redis
