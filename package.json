@@ -1,0 +1,46 @@
+{
+  "name": "engram-memory-community",
+  "version": "1.0.0",
+  "description": "Engram Memory Community Edition - Basic semantic memory with upgrade path to Engram Cloud",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "clean": "rm -rf dist",
+    "prepublish": "npm run build"
+  },
+  "dependencies": {
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/uuid": "^9.0.0",
+    "typescript": "^5.4.0"
+  },
+  "license": "MIT",
+  "author": "Engram Memory",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/EngramMemory/engram-memory-community.git"
+  },
+  "homepage": "https://engrammemory.ai",
+  "keywords": [
+    "openclaw",
+    "memory",
+    "qdrant",
+    "semantic-search",
+    "embeddings",
+    "local-ai",
+    "vector-db",
+    "engram",
+    "community-edition"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "funding": {
+    "type": "individual",
+    "url": "https://engrammemory.ai/pricing"
+  }
+}

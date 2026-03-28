@@ -1,0 +1,211 @@
+{
+  "id": "engram-memory-community",
+  "kind": "memory",
+  "name": "Engram Memory Community Edition",
+  "version": "1.0.0",
+  "description": "Basic semantic memory with Qdrant + FastEmbed. Upgrade to Engram Cloud for enterprise features: deduplication, multi-agent isolation, analytics, bulk operations, and professional support.",
+  "author": "Engram Memory",
+  "homepage": "https://engrammemory.ai",
+  "repository": "https://github.com/EngramMemory/engram-memory-community",
+  "license": "MIT",
+  "entryPoint": "./dist/index.js",
+  "upgradeInfo": {
+    "cloudUrl": "https://engrammemory.ai",
+    "features": [
+      "Advanced deduplication & memory optimization",
+      "Multi-agent memory isolation", 
+      "Automatic memory lifecycle management",
+      "Usage analytics & health monitoring",
+      "Bulk operations & enterprise features",
+      "Professional support & SLA"
+    ]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "qdrantUrl": {
+        "type": "string",
+        "default": "http://localhost:6333",
+        "description": "Qdrant vector database URL"
+      },
+      "embeddingUrl": {
+        "type": "string",
+        "default": "http://localhost:11435",
+        "description": "Local embedding API endpoint"
+      },
+      "embeddingModel": {
+        "type": "string",
+        "default": "nomic-ai/nomic-embed-text-v1.5",
+        "description": "Embedding model name"
+      },
+      "embeddingDimension": {
+        "type": "number",
+        "default": 768,
+        "description": "Vector dimension (must match embedding model output)"
+      },
+      "autoRecall": {
+        "type": "boolean",
+        "default": true,
+        "description": "Inject relevant memories before each agent response"
+      },
+      "autoCapture": {
+        "type": "boolean",
+        "default": true,
+        "description": "Auto-extract and store facts after each conversation turn"
+      },
+      "maxRecallResults": {
+        "type": "number",
+        "default": 5,
+        "description": "Maximum memories injected per auto-recall"
+      },
+      "minRecallScore": {
+        "type": "number",
+        "default": 0.35,
+        "description": "Minimum cosine similarity threshold for recall (0-1)"
+      },
+      "debug": {
+        "type": "boolean",
+        "default": false,
+        "description": "Enable debug logging"
+      },
+      "engramCloud": {
+        "type": "boolean",
+        "default": false,
+        "description": "Enable Engram Cloud integration (requires API key)"
+      },
+      "engramApiKey": {
+        "type": "string",
+        "description": "Engram Cloud API key (format: eng_xxxxx)"
+      },
+      "engramBaseUrl": {
+        "type": "string",
+        "default": "https://api.engrammemory.ai",
+        "description": "Engram Cloud API base URL"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "memory_store",
+      "description": "Store a fact, preference, decision, or entity in memory. Community Edition: No deduplication - redundant memories will accumulate over time.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The memory content to store"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["preference", "fact", "decision", "entity", "other"],
+            "default": "other",
+            "description": "Memory category"
+          },
+          "importance": {
+            "type": "number",
+            "default": 0.5,
+            "description": "Importance score 0-1 (higher = more likely to be recalled)"
+          }
+        },
+        "required": ["text"]
+      }
+    },
+    {
+      "name": "memory_search",
+      "description": "Search memory by semantic similarity. Community Edition: Basic search only - no access tracking or advanced features.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Natural language search query"
+          },
+          "limit": {
+            "type": "number",
+            "default": 5,
+            "description": "Maximum results to return"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["preference", "fact", "decision", "entity", "other"],
+            "description": "Filter by category (optional)"
+          },
+          "minImportance": {
+            "type": "number",
+            "description": "Minimum importance threshold (optional)"
+          }
+        },
+        "required": ["query"]
+      }
+    },
+    {
+      "name": "memory_list",
+      "description": "List recent memories, optionally filtered by category. Community Edition: Single record operations only.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "default": 10
+          },
+          "category": {
+            "type": "string",
+            "enum": ["preference", "fact", "decision", "entity", "other"]
+          }
+        }
+      }
+    },
+    {
+      "name": "memory_forget",
+      "description": "Delete a specific memory by ID or search query.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "memoryId": {
+            "type": "string",
+            "description": "Specific memory UUID to delete"
+          },
+          "query": {
+            "type": "string",
+            "description": "Search query — deletes the top match"
+          }
+        }
+      }
+    },
+    {
+      "name": "memory_profile",
+      "description": "View or update the user profile. Community Edition: Basic profile management only.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["view", "add", "remove"],
+            "default": "view"
+          },
+          "key": { "type": "string" },
+          "value": { "type": "string" },
+          "scope": {
+            "type": "string",
+            "enum": ["static", "dynamic"],
+            "default": "static"
+          }
+        }
+      }
+    }
+  ],
+  "hooks": [
+    "before_agent_start",
+    "after_agent_response"
+  ],
+  "limitations": [
+    "Single collection only (agent-memory) - no multi-agent isolation",
+    "No deduplication - redundant memories accumulate over time",
+    "No automatic memory lifecycle management or decay",
+    "Basic scalar quantization only - 6x memory usage vs enterprise",
+    "No usage analytics or health monitoring",
+    "Single record operations only - no bulk import/export",
+    "Community support only - no professional SLA"
+  ]
+}

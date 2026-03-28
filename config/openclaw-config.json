@@ -1,0 +1,25 @@
+{
+  "plugins": {
+    "allow": ["memory-persistence"],
+    "slots": {
+      "memory": "memory-persistence"
+    },
+    "entries": {
+      "perfect-recall": {
+        "enabled": true,
+        "config": {
+          "qdrantUrl": "http://localhost:6333",
+          "embeddingModel": "nomic-ai/nomic-embed-text-v1.5",
+          "collection": "agent-memory",
+          "autoRecall": true,
+          "autoCapture": true,
+          "maxRecallResults": 5,
+          "minRecallScore": 0.35,
+          "profileFrequency": 20,
+          "debug": false,
+          "embeddingUrl": "http://localhost:11435"
+        }
+      }
+    }
+  }
+}
