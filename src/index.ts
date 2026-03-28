@@ -1,16 +1,8 @@
 /**
  * Engram Memory Community Edition — OpenClaw Plugin Entry Point
- * 
- * Provides basic semantic memory via Qdrant + FastEmbed.
+ *
+ * Provides persistent semantic memory via Qdrant + FastEmbed.
  * Hooks into OpenClaw's agent lifecycle for auto-recall and auto-capture.
- * 
- * 🏆 UPGRADE TO ENGRAM CLOUD FOR:
- * - Advanced deduplication & memory optimization
- * - Multi-agent memory isolation
- * - Automatic memory lifecycle management  
- * - Usage analytics & health monitoring
- * - Bulk operations & enterprise features
- * - Professional support
  */
 
 import { v4 as uuidv4 } from "uuid";
@@ -27,10 +19,6 @@ interface PluginConfig {
   maxRecallResults: number;
   minRecallScore: number;
   debug: boolean;
-  // Engram Cloud Integration
-  engramCloud?: boolean;
-  engramApiKey?: string;
-  engramBaseUrl?: string;
 }
 
 interface Memory {
@@ -66,10 +54,6 @@ const DEFAULT_CONFIG: PluginConfig = {
   maxRecallResults: 5,
   minRecallScore: 0.35,
   debug: false,
-  // Engram Cloud defaults
-  engramCloud: false,
-  engramApiKey: undefined,
-  engramBaseUrl: "https://api.engrammemory.ai",
 };
 
 // Short messages that don't warrant memory operations
@@ -88,18 +72,12 @@ const CATEGORY_PATTERNS: Record<string, RegExp> = {
 class EngramMemoryPlugin {
   private config: PluginConfig;
   private messageCount = 0;
-  // COMMUNITY EDITION: Hard-coded collection (no multi-agent isolation)
   private readonly COLLECTION_NAME = "agent-memory";
 
   constructor(userConfig: Partial<PluginConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...userConfig };
     
-    if (this.config.engramCloud && this.config.engramApiKey) {
-      console.log("[engram-memory] ✨ Engram Cloud integration enabled");
-    } else {
-      console.log("[engram-memory] 🏠 Running in local community mode");
-      console.log("[engram-memory] 💡 Upgrade to Engram Cloud for enterprise features: https://engrammemory.ai");
-    }
+    console.log("[engram-memory] Engram Community Edition initialized");
   }
 
   private log(...args: unknown[]) {
@@ -108,40 +86,9 @@ class EngramMemoryPlugin {
     }
   }
 
-  // ─── Engram Cloud Integration ───────────────────────────────────────
-
-  private async engramCloudRequest(endpoint: string, method: string = "GET", data?: any): Promise<any> {
-    if (!this.config.engramCloud || !this.config.engramApiKey) {
-      throw new Error("Engram Cloud not configured. Set engramCloud: true and engramApiKey in config.");
-    }
-
-    const response = await fetch(`${this.config.engramBaseUrl}${endpoint}`, {
-      method,
-      headers: {
-        "Authorization": `Bearer ${this.config.engramApiKey}`,
-        "Content-Type": "application/json",
-        "User-Agent": "engram-memory-community/1.0.0",
-      },
-      body: data ? JSON.stringify(data) : undefined,
-    });
-
-    if (!response.ok) {
-      throw new Error(`Engram Cloud API error: ${response.status} ${await response.text()}`);
-    }
-
-    return response.json();
-  }
-
   // ─── Embedding ──────────────────────────────────────────────────
 
   private async embed(text: string): Promise<number[]> {
-    if (this.config.engramCloud && this.config.engramApiKey) {
-      // Use Engram Cloud embeddings (optimized, cached, enterprise-grade)
-      const result = await this.engramCloudRequest("/embed", "POST", { text });
-      return result.embedding;
-    }
-
-    // COMMUNITY EDITION: Basic local embeddings
     const res = await fetch(`${this.config.embeddingUrl}/api/embed`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -182,12 +129,11 @@ class EngramMemoryPlugin {
             size: this.config.embeddingDimension,
             distance: "Cosine",
           },
-          // COMMUNITY EDITION: Only basic scalar quantization (6x memory waste)
           quantization_config: {
             scalar: {
               type: "int8",
               quantile: 0.99,
-              always_ram: false  // Less efficient than Enterprise TurboQuant
+              always_ram: false
             }
           }
         }),
@@ -286,22 +232,8 @@ class EngramMemoryPlugin {
     category?: string,
     importance?: number
   ): Promise<string> {
-    if (this.config.engramCloud && this.config.engramApiKey) {
-      // Use Engram Cloud (enterprise deduplication, lifecycle management, etc.)
-      const result = await this.engramCloudRequest("/memories", "POST", {
-        text,
-        category: category || this.detectCategory(text),
-        importance: importance ?? 0.5,
-      });
-      return `Memory stored [${result.category}] via Engram Cloud: ${text.substring(0, 80)}...`;
-    }
-
-    // COMMUNITY EDITION: Basic storage WITHOUT deduplication
     await this.ensureCollection();
     const vector = await this.embed(text);
-
-    // PAIN POINT: No deduplication check - memories accumulate redundantly
-    // Enterprise version has sophisticated similarity-based deduplication
 
     const id = uuidv4();
     const resolvedCategory = category || this.detectCategory(text);
@@ -316,8 +248,6 @@ class EngramMemoryPlugin {
         importance: importance ?? 0.5,
         timestamp: now,
         tags: [],
-        // PAIN POINT: No access tracking (accessCount, lastAccessed missing)
-        // Enterprise version tracks usage for intelligent lifecycle management
       },
     });
 
@@ -331,18 +261,6 @@ class EngramMemoryPlugin {
     category?: string,
     minImportance?: number
   ): Promise<Memory[]> {
-    if (this.config.engramCloud && this.config.engramApiKey) {
-      // Use Engram Cloud advanced search
-      const result = await this.engramCloudRequest("/memories/search", "POST", {
-        query,
-        limit: limit || this.config.maxRecallResults,
-        category,
-        minImportance,
-      });
-      return result.memories;
-    }
-
-    // COMMUNITY EDITION: Basic search
     await this.ensureCollection();
     const vector = await this.embed(query);
 
@@ -366,9 +284,6 @@ class EngramMemoryPlugin {
       filter
     );
 
-    // PAIN POINT: No access tracking on search results
-    // Enterprise version updates access patterns for intelligent lifecycle
-
     return results.map((r) => ({
       id: r.id,
       text: r.payload.text as string,
@@ -383,12 +298,6 @@ class EngramMemoryPlugin {
     limit?: number,
     category?: string
   ): Promise<Memory[]> {
-    if (this.config.engramCloud && this.config.engramApiKey) {
-      const result = await this.engramCloudRequest(`/memories?limit=${limit || 10}&category=${category || ""}`, "GET");
-      return result.memories;
-    }
-
-    // COMMUNITY EDITION: Basic listing (single record operations only)
     await this.ensureCollection();
 
     let filter: Record<string, unknown> | undefined;
@@ -409,18 +318,6 @@ class EngramMemoryPlugin {
   }
 
   async memoryForget(memoryId?: string, query?: string): Promise<string> {
-    if (this.config.engramCloud && this.config.engramApiKey) {
-      if (memoryId) {
-        await this.engramCloudRequest(`/memories/${memoryId}`, "DELETE");
-        return `Memory ${memoryId} deleted via Engram Cloud.`;
-      }
-      if (query) {
-        const result = await this.engramCloudRequest("/memories/forget", "POST", { query });
-        return result.message;
-      }
-    }
-
-    // COMMUNITY EDITION: Basic deletion
     if (memoryId) {
       await this.deletePoint(memoryId);
       return `Memory ${memoryId} deleted.`;
@@ -522,8 +419,6 @@ class EngramMemoryPlugin {
       }
     }
 
-    // PAIN POINT: No automatic memory decay/lifecycle management
-    // Enterprise version automatically manages memory health and importance decay
   }
 }
 
@@ -534,12 +429,7 @@ let plugin: EngramMemoryPlugin;
 export function register(config: Partial<PluginConfig> = {}) {
   plugin = new EngramMemoryPlugin(config);
   
-  if (config.engramCloud) {
-    console.log("[engram-memory] ✨ Engram Cloud integration active");
-  } else {
-    console.log("[engram-memory] 🏠 Community Edition - single collection:", "agent-memory");
-    console.log("[engram-memory] 🚀 Upgrade to Engram Cloud for enterprise features: https://engrammemory.ai");
-  }
+  console.log("[engram-memory] Community Edition registered — collection: agent-memory");
 
   return {
     // ── Lifecycle Hooks ──────────────────────────────────────────
@@ -575,7 +465,6 @@ export function register(config: Partial<PluginConfig> = {}) {
         return plugin.memoryForget(params.memoryId, params.query);
       },
       memory_profile: async (params: { action?: string; key?: string; value?: string; scope?: string }) => {
-        // COMMUNITY EDITION: Basic profile as preference memories
         if (params.action === "view" || !params.action) {
           const profiles = await plugin.memorySearch("user profile preferences", 20);
           const profileMemories = profiles.filter((m) => m.category === "preference" || m.tags?.includes("profile"));

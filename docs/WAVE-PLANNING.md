@@ -1,6 +1,6 @@
 # Wave Planning System
 
-Copy-paste prompt for AI orchestrators that use Perfect Recall as their memory backbone. This turns any agent into a research-first, wave-based executor.
+Copy-paste prompt for AI orchestrators that use Engram as their memory backbone. This turns any agent into a research-first, wave-based executor.
 
 ## Copy & Paste This Into Your Agent's System Prompt
 
@@ -50,7 +50,7 @@ Exact commands.
 Dedicated verifier agent: AST/tsc checks, trace data flows, check interfaces. PASS/FAIL per criterion.
 
 ### Phase 7: Deploy
-Rebuild containers → check logs → commit → store completion in Perfect Recall.
+Rebuild containers → check logs → commit → store completion in Engram.
 
 ### Rules
 - Never implement directly — delegate to sub-agents
@@ -67,12 +67,12 @@ The wave structure ensures:
 - Dependencies are respected (backend before frontend)
 - Parallel work doesn't create merge conflicts (isolated file scopes)
 - Every change is verified before moving on
-- Perfect Recall stores completions so context survives across sessions
+- Engram stores completions so context survives across sessions
 
-## Integration With Perfect Recall
+## Integration With Engram
 
-The wave system relies on Perfect Recall for:
+The wave system relies on Engram for:
 - **Pre-research:** `memory_recall` for permanent rules and past decisions before planning
 - **Post-wave:** `memory_store` completion summaries after each wave
-- **Context system:** `perfect-recall-ask` for codebase understanding during research
+- **Context system:** `memory_search` for codebase understanding during research
 - **Continuity:** Wave plans survive session restarts because they're stored in memory

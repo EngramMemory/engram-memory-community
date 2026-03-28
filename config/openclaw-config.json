@@ -1,11 +1,11 @@
 {
   "plugins": {
-    "allow": ["memory-persistence"],
+    "allow": ["engram"],
     "slots": {
-      "memory": "memory-persistence"
+      "memory": "engram"
     },
     "entries": {
-      "perfect-recall": {
+      "engram": {
         "enabled": true,
         "config": {
           "qdrantUrl": "http://localhost:6333",
@@ -15,7 +15,6 @@
           "autoCapture": true,
           "maxRecallResults": 5,
           "minRecallScore": 0.35,
-          "profileFrequency": 20,
           "debug": false,
           "embeddingUrl": "http://localhost:11435"
         }

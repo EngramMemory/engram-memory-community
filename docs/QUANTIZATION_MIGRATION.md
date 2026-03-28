@@ -1,6 +1,6 @@
 # Scalar Quantization Migration Guide
 
-Perfect Recall v2024.3 introduces scalar quantization for 4x memory reduction with no recall loss. This guide helps you migrate existing collections to use quantization.
+Engram v2024.3 introduces scalar quantization for 4x memory reduction with no recall loss. This guide helps you migrate existing collections to use quantization.
 
 ## What's New
 
@@ -14,7 +14,7 @@ Perfect Recall v2024.3 introduces scalar quantization for 4x memory reduction wi
 Quantization is automatically enabled when you run:
 
 ```bash
-cd perfect-recall
+cd engram-memory-community
 bash scripts/setup.sh
 ```
 
@@ -64,7 +64,7 @@ curl "http://localhost:6333/collections/agent-memory/points/scroll" \
 curl -X DELETE http://localhost:6333/collections/agent-memory
 
 # 3. Recreate with quantization (run setup script)
-cd perfect-recall
+cd engram-memory-community
 bash scripts/setup.sh
 
 # 4. Restore memories
@@ -122,7 +122,7 @@ curl http://localhost:6333/collections/agent-memory
 ## Compatibility
 
 - **Qdrant Version**: Requires v1.8.0+ (setup script uses v1.11.3)
-- **Existing Code**: No changes needed to Perfect Recall plugin
+- **Existing Code**: No changes needed to Engram plugin
 - **Search Quality**: Identical results (99th percentile preserves accuracy)
 - **Mixed Collections**: Quantized and non-quantized vectors can coexist
 

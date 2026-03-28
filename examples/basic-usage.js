@@ -112,12 +112,6 @@ async function basicUsageDemo() {
     }
 
     console.log("\n✨ Demo completed successfully!");
-    console.log("\n💡 Notice: As you add more memories, Community Edition will:");
-    console.log("   • Accumulate duplicate memories (no deduplication)");  
-    console.log("   • Use more memory (basic quantization only)");
-    console.log("   • Search slower over time (no optimization)");
-    console.log("\n🚀 Upgrade to Engram Cloud for enterprise features!");
-    console.log("   https://engrammemory.ai");
 
   } catch (error) {
     console.error("❌ Demo failed:", error.message);

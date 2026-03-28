@@ -1,48 +1,92 @@
-# Perfect Recall — SOUL.md Rules
+# Engram — SOUL Rules
 
-Copy the section below into your OpenClaw agent's `SOUL.md` (or equivalent system prompt file) to enforce Perfect Recall usage across all sessions.
+Add these rules to your agent's system prompt (SOUL.md, CLAUDE.md, or equivalent) to make it think with memory, not just use memory tools.
+
+The goal isn't "call memory_store after tasks." The goal is an agent that **builds understanding over time** — one that recalls before acting, stores what matters without being told, and never asks a question it already knows the answer to.
 
 ---
 
-## Copy & Paste This Section
+## Copy This Into Your Agent's System Prompt
 
 ```markdown
-## PERFECT RECALL — MANDATORY MEMORY SYSTEM
+## ENGRAM — HOW YOU THINK
 
-- **On startup:** `memory_recall` for permanent rules, recent context, and active projects
-- **On every task completion:** `memory_store` a completion summary (category: `completion`, importance: 0.8+)
-  - Include: what was done, files changed, key decisions, what's still pending
-- **After updates/restarts:** Verify Perfect Recall is responsive (`memory_recall "test"`)
-- **Before coding/deploying:** `memory_recall` for relevant rules — they exist because past mistakes
-- **Before asking the user:** `memory_recall` first — the answer is probably already stored
-- **Context system:** Use `perfect-recall-ask` and `perfect-recall-context` for codebase understanding
-- Ignoring these rules wastes time and breaks session continuity
+You have persistent memory across sessions. Use it the way a competent person uses their own memory: automatically, constantly, without being told.
+
+### Before You Do Anything
+
+- **Recall first.** Before starting any task, search memory for relevant context: past decisions, preferences, rules, prior work on this area. The answer to most questions is already stored.
+- **Before asking the user:** Search memory. If the answer exists, use it. Don't waste their time re-explaining what they already told you.
+- **Before coding or deploying:** Search for relevant rules and past mistakes. They exist because something went wrong before.
+
+### While You Work
+
+- **Notice what matters.** When the user states a preference, makes a decision, shares a fact about their system, or corrects your approach — that's worth storing. You don't need to be told.
+- **Store completions.** When you finish a task, store a summary: what was done, what files changed, what decisions were made, what's still pending. Future-you needs this.
+- **Store corrections.** When you get something wrong and the user fixes your approach, store what happened and why. Don't make the same mistake twice.
+
+### What to Store
+
+| Signal | Category | Importance |
+|--------|----------|------------|
+| User corrects your approach | `decision` | 0.9 |
+| Architectural decision made | `decision` | 0.8 |
+| User states a preference | `preference` | 0.7–0.8 |
+| Task completed | `fact` | 0.8 |
+| System/infrastructure fact learned | `fact` | 0.7 |
+| Person, project, or org context | `entity` | 0.6–0.7 |
+
+### What NOT to Store
+
+- Ephemeral conversation filler ("ok", "thanks", "sounds good")
+- Things derivable from code or git history
+- Exact file contents (store the insight, not the text)
+- Speculative or uncertain information
+
+### The Pattern
+
+```
+1. Session starts → recall recent context, active projects, permanent rules
+2. User gives task → recall anything relevant to this area
+3. Work happens → notice preferences, decisions, corrections
+4. Task completes → store completion summary
+5. Session ends → everything important is already stored
+```
+
+This isn't a feature you turn on. It's how you think.
 ```
 
 ---
 
-## Why This Matters
+## Integration
 
-OpenClaw agents start fresh every session. Without enforced memory rules:
-- Completed work gets forgotten
-- The same questions get asked repeatedly
-- Decisions get relitigated
-- Context from yesterday's 3-hour session is gone
+### Memory Tools Available
 
-Perfect Recall fixes this — but only if the agent actually uses it. These rules make it non-optional.
+| Tool | When to use |
+|------|-------------|
+| `memory_store` | You learned something worth keeping |
+| `memory_search` | You need context before acting |
+| `memory_recall` | Automatic context injection (auto-recall handles this) |
+| `memory_forget` | Something stored is wrong or outdated |
 
-## What Gets Stored
+### Auto-Recall
 
-| When | What | Category | Importance |
-|------|------|----------|------------|
-| Task completed | Summary of work done, files changed, decisions made | `completion` | 0.8+ |
-| New rule learned | Permanent rules, hard lessons, user preferences | `decision` | 0.9 |
-| Architecture change | Infrastructure decisions, deployment changes | `fact` | 0.8 |
-| User preference | Communication style, tool choices, project conventions | `preference` | 0.7 |
-| Project context | Active projects, current state, blockers | `other` | 0.7 |
+If `autoRecall` is enabled (default), Engram automatically searches for relevant memories before every response and injects them as context. Your agent doesn't need to explicitly call `memory_search` for basic context — it happens automatically.
 
-## Customization
+Explicit `memory_search` is still useful for targeted queries: "What did we decide about the auth system?" or "What are the deployment rules?"
 
-Adjust the rules to match your workflow. The key principle: **store on completion, recall on startup, verify after restarts.**
+### Auto-Capture
 
-If your agent has a different system prompt format, adapt the rules — the behaviors matter more than the exact wording.
+If `autoCapture` is enabled (default), Engram automatically extracts facts from conversations and stores them. This handles the baseline. The SOUL rules above push the agent to be more intentional — storing completions, corrections, and decisions that auto-capture might miss.
+
+---
+
+## Why This Works
+
+Most memory integrations fail because they treat memory as a feature: "call memory_store when the user says 'remember this.'" That's a filing cabinet, not memory.
+
+Real memory is proactive. You don't decide to remember that your colleague prefers TypeScript — you just do, because you were paying attention. These rules make the agent pay attention.
+
+The difference:
+- **Without SOUL rules:** Agent uses memory when explicitly asked. Forgets everything between sessions. Asks the same questions repeatedly.
+- **With SOUL rules:** Agent recalls before acting, stores what matters, builds understanding over time. Each session starts where the last one left off.

@@ -1,212 +1,266 @@
 #!/bin/bash
+# Engram Memory Community Edition — Setup Script
+# Deploys Qdrant + FastEmbed and generates OpenClaw configuration
 
-# Engram Memory Community Edition Setup Script
-# This script sets up Qdrant and FastEmbed for local development
+set -euo pipefail
 
-set -e
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
 
-echo "🚀 Setting up Engram Memory Community Edition..."
+echo -e "${BLUE}Engram Memory Setup${NC}"
+echo "Setting up persistent memory for your AI agent..."
 echo ""
 
 # Check prerequisites
-echo "📋 Checking prerequisites..."
+check_prereq() {
+    local cmd=$1
+    local name=$2
+    if ! command -v "$cmd" &> /dev/null; then
+        echo -e "${RED}$name is not installed${NC}"
+        echo "Please install $name and run this script again."
+        exit 1
+    else
+        echo -e "${GREEN}$name found${NC}"
+    fi
+}
 
-if ! command -v docker &> /dev/null; then
-    echo "❌ Docker is not installed. Please install Docker first."
-    echo "   https://docs.docker.com/get-docker/"
+echo "Checking prerequisites..."
+check_prereq "docker" "Docker"
+check_prereq "docker-compose" "Docker Compose"
+
+# Check Docker is running
+if ! docker info &> /dev/null; then
+    echo -e "${RED}Docker is not running${NC}"
+    echo "Please start Docker and run this script again."
     exit 1
 fi
+echo -e "${GREEN}Docker is running${NC}"
 
-if ! command -v docker-compose &> /dev/null && ! command -v docker &> /dev/null; then
-    echo "❌ Docker Compose is not available. Please install Docker Compose."
-    echo "   https://docs.docker.com/compose/install/"
-    exit 1
-fi
-
-if ! command -v node &> /dev/null; then
-    echo "❌ Node.js is not installed. Please install Node.js 18+."
-    echo "   https://nodejs.org/"
-    exit 1
-fi
-
-NODE_VERSION=$(node -v | sed 's/v//' | cut -d. -f1)
-if [ "$NODE_VERSION" -lt 18 ]; then
-    echo "❌ Node.js version $NODE_VERSION is too old. Please upgrade to Node.js 18+."
-    exit 1
-fi
-
-echo "✅ Prerequisites checked"
+# Get setup directory
+SETUP_DIR="${MEMORY_STACK_DIR:-$HOME/engram-stack}"
 echo ""
+echo -e "${BLUE}Installation directory:${NC} $SETUP_DIR"
 
-# Create docker-compose.yml if it doesn't exist
-if [ ! -f "docker-compose.yml" ]; then
-    echo "📝 Creating docker-compose.yml..."
-    cat > docker-compose.yml << 'EOF'
+# Ask for confirmation
+read -p "Continue with setup? (y/N): " -n 1 -r
+echo
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    echo "Setup cancelled."
+    exit 0
+fi
+
+# Create setup directory
+mkdir -p "$SETUP_DIR"
+cd "$SETUP_DIR"
+
+# Generate docker-compose.yml
+echo ""
+echo -e "${BLUE}Generating docker-compose.yml...${NC}"
+
+cat > docker-compose.yml << 'EOF'
 version: '3.8'
 
 services:
   qdrant:
-    image: qdrant/qdrant:v1.7.4
-    container_name: engram-qdrant
+    image: qdrant/qdrant:v1.11.3
+    container_name: qdrant-memory
+    restart: unless-stopped
     ports:
       - "6333:6333"
       - "6334:6334"
     volumes:
-      - ./data/qdrant:/qdrant/storage
+      - qdrant_storage:/qdrant/storage
     environment:
       - QDRANT__SERVICE__HTTP_PORT=6333
       - QDRANT__SERVICE__GRPC_PORT=6334
-    restart: unless-stopped
+      - QDRANT__LOG_LEVEL=INFO
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 40s
 
   fastembed:
-    image: qdrant/fastembed_server:latest
-    container_name: engram-fastembed
+    image: qdrant/fastembed_api:v0.3.6
+    container_name: fastembed-memory
+    restart: unless-stopped
     ports:
       - "11435:8000"
     environment:
       - MODEL_NAME=nomic-ai/nomic-embed-text-v1.5
       - MAX_WORKERS=1
-    restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
 
+volumes:
+  qdrant_storage:
+    driver: local
 EOF
-    echo "✅ docker-compose.yml created"
-else
-    echo "📝 docker-compose.yml already exists"
-fi
 
-# Create data directory
-echo "📁 Creating data directory..."
-mkdir -p data/qdrant
-echo "✅ Data directory created"
+echo -e "${GREEN}docker-compose.yml created${NC}"
 
-# Pull and start services
+# Start services
 echo ""
-echo "🐳 Starting Qdrant and FastEmbed services..."
-echo "   This may take a few minutes on first run..."
+echo -e "${BLUE}Starting Engram services...${NC}"
+echo "This may take a few minutes on first run (downloading models)..."
 
-docker-compose pull
 docker-compose up -d
 
-echo "✅ Services started"
+# Wait for services to be healthy
 echo ""
+echo -e "${BLUE}Waiting for services to start...${NC}"
 
-# Wait for services to be ready
-echo "⏳ Waiting for services to be ready..."
-
-# Function to wait for a service
 wait_for_service() {
-    local url=$1
-    local service_name=$2
-    local max_attempts=30
-    local attempt=0
+    local service=$1
+    local url=$2
+    local timeout=120
+    local count=0
 
-    while [ $attempt -lt $max_attempts ]; do
-        if curl -s -o /dev/null -w "%{http_code}" "$url" | grep -q "200\|404"; then
-            echo "✅ $service_name is ready"
-            return 0
+    echo -n "Waiting for $service"
+    while ! curl -s "$url" > /dev/null 2>&1; do
+        if [ $count -ge $timeout ]; then
+            echo -e "\n${RED}Timeout waiting for $service${NC}"
+            echo "Check logs with: docker-compose logs $service"
+            exit 1
         fi
-        echo "   Waiting for $service_name... (attempt $((attempt + 1))/$max_attempts)"
-        sleep 5
-        attempt=$((attempt + 1))
+        echo -n "."
+        sleep 2
+        ((count+=2))
     done
-
-    echo "❌ $service_name failed to start after $((max_attempts * 5)) seconds"
-    return 1
+    echo -e " ${GREEN}OK${NC}"
 }
 
-# Wait for Qdrant
-wait_for_service "http://localhost:6333/health" "Qdrant"
+wait_for_service "qdrant" "http://localhost:6333/health"
+wait_for_service "fastembed" "http://localhost:11435/health"
 
-# Wait for FastEmbed 
-wait_for_service "http://localhost:11435/health" "FastEmbed"
-
+# Test the embedding API
 echo ""
-
-# Test the setup
-echo "🧪 Testing setup..."
-
-# Test Qdrant
-echo "   Testing Qdrant..."
-QDRANT_RESPONSE=$(curl -s http://localhost:6333/collections)
-if echo "$QDRANT_RESPONSE" | grep -q "result"; then
-    echo "   ✅ Qdrant is responding correctly"
-else
-    echo "   ⚠️ Qdrant response unexpected: $QDRANT_RESPONSE"
-fi
-
-# Test FastEmbed
-echo "   Testing FastEmbed..."
-FASTEMBED_RESPONSE=$(curl -s -X POST http://localhost:11435/api/embed \
+echo -e "${BLUE}Testing embedding generation...${NC}"
+test_response=$(curl -s -X POST http://localhost:11435/api/embed \
     -H "Content-Type: application/json" \
-    -d '{"model":"nomic-ai/nomic-embed-text-v1.5","input":"test embedding"}')
+    -d '{"model":"nomic-ai/nomic-embed-text-v1.5","input":"test"}')
 
-if echo "$FASTEMBED_RESPONSE" | grep -q "embedding\|embeddings"; then
-    echo "   ✅ FastEmbed is responding correctly"
+if echo "$test_response" | grep -q "embedding"; then
+    echo -e "${GREEN}FastEmbed API is working${NC}"
 else
-    echo "   ⚠️ FastEmbed response unexpected (this is normal on first run)"
-    echo "   💡 FastEmbed may need a few more minutes to download the model"
+    echo -e "${RED}FastEmbed API test failed${NC}"
+    echo "Response: $test_response"
+    exit 1
 fi
 
+# Create Qdrant collection with scalar quantization
 echo ""
+echo -e "${BLUE}Creating Qdrant collection with scalar quantization...${NC}"
+collection_response=$(curl -s -X PUT http://localhost:6333/collections/agent-memory \
+    -H "Content-Type: application/json" \
+    -d '{
+        "vectors": {
+            "size": 768,
+            "distance": "Cosine"
+        },
+        "optimizers_config": {
+            "default_segment_number": 2
+        },
+        "replication_factor": 1,
+        "quantization_config": {
+            "scalar": {
+                "type": "int8",
+                "quantile": 0.99,
+                "always_ram": true
+            }
+        }
+    }')
 
-# Build the plugin
-echo "🔧 Building Engram Memory plugin..."
-if [ -f "package.json" ]; then
-    npm install
-    npm run build
-    echo "✅ Plugin built successfully"
+if echo "$collection_response" | grep -q '"result":true'; then
+    echo -e "${GREEN}Collection 'agent-memory' created${NC}"
 else
-    echo "⚠️ package.json not found, skipping npm build"
+    echo -e "${YELLOW}Collection might already exist${NC}"
 fi
 
+# Detect network setup
+if docker network ls | grep -q "bridge"; then
+    QDRANT_URL="http://localhost:6333"
+    EMBEDDING_URL="http://localhost:11435"
+else
+    QDRANT_URL="http://host.docker.internal:6333"
+    EMBEDDING_URL="http://host.docker.internal:11435"
+fi
+
+# Generate OpenClaw configuration
 echo ""
-echo "🎉 Setup completed successfully!"
+echo -e "${BLUE}Generating OpenClaw configuration...${NC}"
+
+cat > openclaw-memory-config.json << EOF
+{
+  "plugins": {
+    "allow": ["engram"],
+    "slots": {
+      "memory": "engram"
+    },
+    "entries": {
+      "engram": {
+        "enabled": true,
+        "config": {
+          "qdrantUrl": "$QDRANT_URL",
+          "embeddingUrl": "$EMBEDDING_URL",
+          "embeddingModel": "nomic-ai/nomic-embed-text-v1.5",
+          "collection": "agent-memory",
+          "autoRecall": true,
+          "autoCapture": true,
+          "maxRecallResults": 5,
+          "minRecallScore": 0.35,
+          "debug": false
+        }
+      }
+    }
+  }
+}
+EOF
+
+# Success message
 echo ""
-echo "📊 Service Status:"
-echo "   • Qdrant Vector DB: http://localhost:6333"
-echo "   • FastEmbed API: http://localhost:11435" 
-echo "   • Qdrant UI: http://localhost:6333/dashboard"
+echo -e "${GREEN}Engram Memory setup complete!${NC}"
 echo ""
-echo "🧪 Test your setup:"
-echo "   node examples/basic-usage.js"
+echo -e "${YELLOW}Next Steps:${NC}"
 echo ""
-echo "📖 Next Steps:"
-echo "   1. Add plugin to your OpenClaw config:"
-echo "      {"
-echo "        \"plugins\": {"
-echo "          \"engram-memory-community\": {"
-echo "            \"qdrantUrl\": \"http://localhost:6333\","
-echo "            \"embeddingUrl\": \"http://localhost:11435\","
-echo "            \"autoRecall\": true,"
-echo "            \"autoCapture\": true"
-echo "          }"
-echo "        }"
-echo "      }"
+echo "1. Add the following to your ~/.openclaw/openclaw.json:"
 echo ""
-echo "   2. Restart OpenClaw to load the plugin"
+echo -e "${BLUE}$(cat openclaw-memory-config.json)${NC}"
 echo ""
-echo "   3. Try the memory commands:"
-echo "      memory_store \"I prefer TypeScript\" --category preference"
-echo "      memory_search \"programming languages\""
+echo "2. Restart OpenClaw gateway:"
+echo "   openclaw gateway restart"
 echo ""
-echo "🚀 Ready to upgrade to Engram Cloud?"
-echo "   https://engrammemory.ai"
+echo "3. Test memory functions in your agent:"
+echo "   memory_store \"I love persistent memory!\" --category preference"
+echo "   memory_search \"memory preferences\""
 echo ""
-echo "💡 Community Edition Limitations:"
-echo "   • No deduplication (memories accumulate redundantly)"
-echo "   • Basic quantization only (6x memory waste)" 
-echo "   • Single collection (no multi-agent isolation)"
-echo "   • No analytics or monitoring"
-echo "   • Manual operations only (no bulk tools)"
+echo -e "${YELLOW}Service URLs:${NC}"
+echo "   Qdrant Web UI: http://localhost:6333/dashboard"
+echo "   FastEmbed API: http://localhost:11435/docs"
 echo ""
-echo "   These limitations create natural upgrade pressure as you scale!"
+echo -e "${YELLOW}Management Commands:${NC}"
+echo "   Start services:  docker-compose up -d"
+echo "   Stop services:   docker-compose down"
+echo "   View logs:       docker-compose logs -f"
+echo "   Status:          docker-compose ps"
+echo ""
+echo -e "${YELLOW}Data Location:${NC}"
+echo "   Setup files:     $SETUP_DIR"
+echo "   Vector data:     Docker volume 'qdrant_storage'"
+echo ""
+echo -e "${GREEN}Your agent now has persistent memory across sessions.${NC}"

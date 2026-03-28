@@ -1,7 +1,7 @@
 {
   "name": "engram-memory-community",
   "version": "1.0.0",
-  "description": "Engram Memory Community Edition - Basic semantic memory with upgrade path to Engram Cloud",
+  "description": "Engram Memory Community Edition - Persistent semantic memory for AI agents via Qdrant + FastEmbed",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
