@@ -4,6 +4,9 @@
 
 set -euo pipefail
 
+# Resolve repo root before we cd anywhere
+ENGRAM_REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -233,7 +236,7 @@ cat > openclaw-memory-config.json << EOF
 EOF
 
 # Setup context system
-SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SKILL_DIR="$ENGRAM_REPO_DIR"
 echo ""
 echo -e "${BLUE}Setting up context system...${NC}"
 
