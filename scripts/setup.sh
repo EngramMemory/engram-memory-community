@@ -235,18 +235,22 @@ cat > openclaw-memory-config.json << EOF
 }
 EOF
 
-# Setup context system
+# Setup Python environment
 SKILL_DIR="$ENGRAM_REPO_DIR"
 echo ""
-echo -e "${BLUE}Setting up context system...${NC}"
+echo -e "${BLUE}Setting up Python environment...${NC}"
 
-# Install Python dependencies for context system
+# Create venv and install all dependencies
+if [ ! -f "$SKILL_DIR/.venv/bin/python" ]; then
+    python3 -m venv "$SKILL_DIR/.venv" 2>/dev/null || python3 -m virtualenv "$SKILL_DIR/.venv" 2>/dev/null
+fi
+
 if [ -f "$SKILL_DIR/.venv/bin/pip" ]; then
-    "$SKILL_DIR/.venv/bin/pip" install click pyyaml httpx > /dev/null 2>&1
-    echo -e "${GREEN}Context system dependencies installed${NC}"
-elif command -v pip3 &> /dev/null; then
-    pip3 install click pyyaml httpx > /dev/null 2>&1
-    echo -e "${GREEN}Context system dependencies installed${NC}"
+    "$SKILL_DIR/.venv/bin/pip" install -q -r "$SKILL_DIR/requirements.txt" 2>&1 | tail -1
+    echo -e "${GREEN}Python dependencies installed${NC}"
+else
+    echo -e "${YELLOW}Could not create venv — installing globally${NC}"
+    pip3 install -q -r "$SKILL_DIR/requirements.txt" 2>&1 | tail -1
 fi
 
 # Add bin/ to PATH if not already there
