@@ -15,7 +15,7 @@ class MemorySearch:
     def __init__(self,
                  qdrant_host: str = "localhost", 
                  qdrant_port: int = 6333,
-                 fastembed_url: str = "http://localhost:8000",
+                 fastembed_url: str = "http://localhost:11435",
                  collection_name: str = "agent-memory"):
         
         self.qdrant_client = QdrantClient(host=qdrant_host, port=qdrant_port)
@@ -26,14 +26,18 @@ class MemorySearch:
         """Get embedding for search query"""
         try:
             response = requests.post(
-                f"{self.fastembed_url}/embeddings",
-                json={"texts": [query]},
+                f"{self.fastembed_url}/api/embed",
+                json={"model": "nomic-ai/nomic-embed-text-v1.5", "input": query},
                 timeout=30
             )
             response.raise_for_status()
             
             result = response.json()
-            return result["embeddings"][0]
+            if "embeddings" in result:
+                return result["embeddings"][0]
+            if "embedding" in result:
+                return result["embedding"]
+            raise ValueError(f"Unexpected embedding response: {list(result.keys())}")
         
         except Exception as e:
             print(f"Failed to get query embedding: {e}")

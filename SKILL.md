@@ -20,7 +20,7 @@ Persistent semantic memory that makes your agent remember across sessions.
 
 ```bash
 # Install the skill
-clawhub install engram
+clawhub install engrammemory
 
 # Setup (requires Docker — deploys Qdrant + FastEmbed)
 bash scripts/setup.sh
@@ -180,10 +180,10 @@ All context queries are scoped to the current project.
 
 ```bash
 # 1. Install the skill
-clawhub install engram
+clawhub install engrammemory
 
 # 2. Run setup script  
-cd ~/.openclaw/workspace/skills/engram
+cd ~/.openclaw/workspace/skills/engrammemory
 bash scripts/setup.sh
 
 # 3. Follow the configuration prompts
@@ -200,7 +200,7 @@ If you prefer manual installation or need custom configuration:
 1. **Deploy Qdrant + FastEmbed:**
    ```bash
    # Copy docker-compose template
-   cp skills/engram/config/docker-compose.yml ~/engram-stack/
+   cp config/docker-compose.yml ~/engram-stack/
    cd ~/engram-stack
    docker-compose up -d
    ```
@@ -343,7 +343,8 @@ curl "http://localhost:6333/collections/agent-memory/points/scroll" \
 ### Import Memory  
 ```bash
 # Import memories from backup
-python skills/engram/scripts/import_memories.py memory_backup.json
+# Re-import using memory_store
+python scripts/memory_store.py --json '{"text": "...", "category": "fact"}'
 ```
 
 ## Performance Tuning
@@ -447,7 +448,7 @@ memory_recall("recent changes", days_back=30)
 
 Found a bug or want to add features? 
 
-- **GitHub:** [engram repository](https://github.com/escapeTheFate1991/engram)
+- **GitHub:** [engram-memory-community](https://github.com/EngramMemory/engram-memory-community)
 - **Issues:** Report bugs and feature requests
 - **Docs:** Help improve documentation
 - **Examples:** Share usage patterns

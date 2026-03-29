@@ -24,7 +24,7 @@ Usage:
 Environment Variables:
     QDRANT_HOST         - Qdrant host (default: localhost)
     QDRANT_PORT         - Qdrant port (default: 6333)
-    FASTEMBED_URL       - FastEmbed service URL (default: http://localhost:8000)
+    FASTEMBED_URL       - FastEmbed service URL (default: http://localhost:11435)
     COLLECTION_NAME     - Qdrant collection name (default: agent-memory)
     DEBUG               - Enable debug logging (default: false)
 """
@@ -70,7 +70,7 @@ class EngramMCPServer:
         self,
         qdrant_host: str = "localhost",
         qdrant_port: int = 6333,
-        fastembed_url: str = "http://localhost:8000",
+        fastembed_url: str = "http://localhost:11435",
         collection_name: str = "agent-memory",
     ):
         self.qdrant = QdrantClient(host=qdrant_host, port=qdrant_port)
@@ -97,12 +97,17 @@ class EngramMCPServer:
 
     def _embed(self, text: str) -> List[float]:
         resp = requests.post(
-            f"{self.fastembed_url}/embeddings",
-            json={"texts": [text]},
+            f"{self.fastembed_url}/api/embed",
+            json={"model": "nomic-ai/nomic-embed-text-v1.5", "input": text},
             timeout=30,
         )
         resp.raise_for_status()
-        return resp.json()["embeddings"][0]
+        result = resp.json()
+        if "embeddings" in result:
+            return result["embeddings"][0]
+        if "embedding" in result:
+            return result["embedding"]
+        raise ValueError(f"Unexpected embedding response: {list(result.keys())}")
 
     # ── Tool Registration ───────────────────────────────────────────
 
@@ -307,7 +312,7 @@ async def main():
     parser = argparse.ArgumentParser(description="Engram Memory MCP Server")
     parser.add_argument("--qdrant-host", default=os.getenv("QDRANT_HOST", "localhost"))
     parser.add_argument("--qdrant-port", type=int, default=int(os.getenv("QDRANT_PORT", "6333")))
-    parser.add_argument("--fastembed-url", default=os.getenv("FASTEMBED_URL", "http://localhost:8000"))
+    parser.add_argument("--fastembed-url", default=os.getenv("FASTEMBED_URL", "http://localhost:11435"))
     parser.add_argument("--collection", default=os.getenv("COLLECTION_NAME", "agent-memory"))
 
     args = parser.parse_args()

@@ -70,17 +70,26 @@ def memory_store(text: str, category: str = "other", importance: float = 0.5, me
 
 def memory_forget(query: str = None, memory_id: str = None) -> Dict[str, Any]:
     """Delete a memory by search match or ID."""
-    if memory_id:
-        # Direct delete via Qdrant - use memory_search script with delete mode
-        return run_script("scripts/memory_search_wrapper.py", ["--delete", memory_id])
-    if query:
-        # Search for best match, then delete
-        result = memory_search(query, limit=1)
-        if result.get("success") and result.get("data", {}).get("results"):
-            target = result["data"]["results"][0]
-            return run_script("scripts/memory_search_wrapper.py", ["--delete", str(target["id"])])
-        return {"success": False, "error": "No matching memory found"}
-    return {"success": False, "error": "Provide query or memory_id"}
+    try:
+        from qdrant_client import QdrantClient
+        client = QdrantClient(host="localhost", port=6333)
+
+        if memory_id:
+            client.delete(collection_name="agent-memory", points_selector=[memory_id])
+            return {"success": True, "deleted": memory_id}
+
+        if query:
+            result = memory_search(query, limit=1)
+            if result.get("success") and result.get("data", {}).get("results"):
+                target = result["data"]["results"][0]
+                target_id = str(target["id"])
+                client.delete(collection_name="agent-memory", points_selector=[target_id])
+                return {"success": True, "deleted": target_id, "text": target.get("text", "")[:80]}
+            return {"success": False, "error": "No matching memory found"}
+
+        return {"success": False, "error": "Provide query or memory_id"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 # ── Context Tools ───────────────────────────────────────────────

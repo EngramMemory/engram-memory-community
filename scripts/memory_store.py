@@ -17,7 +17,7 @@ class MemoryStore:
     def __init__(self, 
                  qdrant_host: str = "localhost",
                  qdrant_port: int = 6333,
-                 fastembed_url: str = "http://localhost:8000",
+                 fastembed_url: str = "http://localhost:11435",
                  collection_name: str = "agent-memory"):
         
         self.qdrant_client = QdrantClient(host=qdrant_host, port=qdrant_port)
@@ -35,7 +35,7 @@ class MemoryStore:
                 print(f"Creating collection: {self.collection_name}")
                 self.qdrant_client.create_collection(
                     collection_name=self.collection_name,
-                    vectors_config=VectorParams(size=384, distance=Distance.COSINE)
+                    vectors_config=VectorParams(size=768, distance=Distance.COSINE)
                 )
                 print(f"Collection {self.collection_name} created successfully")
         except Exception as e:
@@ -46,14 +46,19 @@ class MemoryStore:
         """Get embeddings from FastEmbed service"""
         try:
             response = requests.post(
-                f"{self.fastembed_url}/embeddings",
-                json={"texts": [text]},
+                f"{self.fastembed_url}/api/embed",
+                json={"model": "nomic-ai/nomic-embed-text-v1.5", "input": text},
                 timeout=30
             )
             response.raise_for_status()
             
             result = response.json()
-            return result["embeddings"][0]
+            # Handle both Ollama-style and FastEmbed-style responses
+            if "embeddings" in result:
+                return result["embeddings"][0]
+            if "embedding" in result:
+                return result["embedding"]
+            raise ValueError(f"Unexpected embedding response: {list(result.keys())}")
         
         except Exception as e:
             print(f"Failed to get embeddings: {e}")
