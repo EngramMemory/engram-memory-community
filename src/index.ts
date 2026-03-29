@@ -89,13 +89,10 @@ class EngramMemoryPlugin {
   // ─── Embedding ──────────────────────────────────────────────────
 
   private async embed(text: string): Promise<number[]> {
-    const res = await fetch(`${this.config.embeddingUrl}/api/embed`, {
+    const res = await fetch(`${this.config.embeddingUrl}/embeddings`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: this.config.embeddingModel,
-        input: text,
-      }),
+      body: JSON.stringify({ texts: [text] }),
     });
 
     if (!res.ok) {
@@ -103,12 +100,7 @@ class EngramMemoryPlugin {
     }
 
     const data = await res.json();
-
-    // Handle both Ollama-style and FastEmbed-style responses
-    if (data.embeddings) return data.embeddings[0];
-    if (data.embedding) return data.embedding;
-    if (Array.isArray(data) && Array.isArray(data[0])) return data[0];
-    if (Array.isArray(data)) return data;
+    return data.embeddings[0];
 
     throw new Error("Unexpected embedding response format");
   }

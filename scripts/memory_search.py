@@ -26,18 +26,14 @@ class MemorySearch:
         """Get embedding for search query"""
         try:
             response = requests.post(
-                f"{self.fastembed_url}/api/embed",
-                json={"model": "nomic-ai/nomic-embed-text-v1.5", "input": query},
+                f"{self.fastembed_url}/embeddings",
+                json={"texts": [query]},
                 timeout=30
             )
             response.raise_for_status()
             
             result = response.json()
-            if "embeddings" in result:
-                return result["embeddings"][0]
-            if "embedding" in result:
-                return result["embedding"]
-            raise ValueError(f"Unexpected embedding response: {list(result.keys())}")
+            return result["embeddings"][0]
         
         except Exception as e:
             print(f"Failed to get query embedding: {e}")

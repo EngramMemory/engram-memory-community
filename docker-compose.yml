@@ -2,17 +2,17 @@ version: '3.8'
 
 services:
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:v1.11.3
     container_name: engram-qdrant
     ports:
       - "6333:6333"
       - "6334:6334"
     volumes:
       - qdrant_storage:/qdrant/storage
-    networks:
-      - engram-network
     environment:
-      - QDRANT__SERVICE__HOST=0.0.0.0
+      - QDRANT__SERVICE__HTTP_PORT=6333
+      - QDRANT__SERVICE__GRPC_PORT=6334
+      - QDRANT__LOG_LEVEL=INFO
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
@@ -21,29 +21,27 @@ services:
       retries: 3
 
   fastembed:
-    image: ollama/ollama:latest
+    image: qdrant/fastembed_api:v0.3.6
     container_name: engram-fastembed
     ports:
-      - "11435:11434"
-    volumes:
-      - fastembed_data:/root/.ollama
-    networks:
-      - engram-network
-    restart: unless-stopped
+      - "11435:8000"
     environment:
-      - OLLAMA_HOST=0.0.0.0
+      - MODEL_NAME=nomic-ai/nomic-embed-text-v1.5
+      - MAX_WORKERS=1
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/version"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
 
 volumes:
   qdrant_storage:
     driver: local
-  fastembed_data:
-    driver: local
-
-networks:
-  engram-network:
-    driver: bridge

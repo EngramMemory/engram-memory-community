@@ -87,7 +87,7 @@ services:
 
   fastembed:
     image: qdrant/fastembed_api:v0.3.6
-    container_name: fastembed-memory
+    container_name: engram-fastembed
     restart: unless-stopped
     ports:
       - "11435:8000"
@@ -151,11 +151,11 @@ wait_for_service "fastembed" "http://localhost:11435/health"
 # Test the embedding API
 echo ""
 echo -e "${BLUE}Testing embedding generation...${NC}"
-test_response=$(curl -s -X POST http://localhost:11435/api/embed \
+test_response=$(curl -s -X POST http://localhost:11435/embeddings \
     -H "Content-Type: application/json" \
-    -d '{"model":"nomic-ai/nomic-embed-text-v1.5","input":"test"}')
+    -d '{"texts":["test"]}')
 
-if echo "$test_response" | grep -q "embedding"; then
+if echo "$test_response" | grep -q "embeddings"; then
     echo -e "${GREEN}FastEmbed API is working${NC}"
 else
     echo -e "${RED}FastEmbed API test failed${NC}"

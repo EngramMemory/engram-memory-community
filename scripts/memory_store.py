@@ -46,19 +46,14 @@ class MemoryStore:
         """Get embeddings from FastEmbed service"""
         try:
             response = requests.post(
-                f"{self.fastembed_url}/api/embed",
-                json={"model": "nomic-ai/nomic-embed-text-v1.5", "input": text},
+                f"{self.fastembed_url}/embeddings",
+                json={"texts": [text]},
                 timeout=30
             )
             response.raise_for_status()
             
             result = response.json()
-            # Handle both Ollama-style and FastEmbed-style responses
-            if "embeddings" in result:
-                return result["embeddings"][0]
-            if "embedding" in result:
-                return result["embedding"]
-            raise ValueError(f"Unexpected embedding response: {list(result.keys())}")
+            return result["embeddings"][0]
         
         except Exception as e:
             print(f"Failed to get embeddings: {e}")

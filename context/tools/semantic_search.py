@@ -81,17 +81,14 @@ class SemanticSearchEngine:
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(
-                    f"{self.embedding_url}/api/embed",
-                    json={
-                        "model": self.embedding_model,
-                        "input": text
-                    },
+                    f"{self.embedding_url}/embeddings",
+                    json={"texts": [text]},
                     timeout=30
                 )
-                
+
                 if response.status_code == 200:
                     result = response.json()
-                    return result.get('embeddings', [None])[0]
+                    return result["embeddings"][0]
                 else:
                     print(f"Embedding service error: {response.status_code}")
                     return None

@@ -97,17 +97,12 @@ class EngramMCPServer:
 
     def _embed(self, text: str) -> List[float]:
         resp = requests.post(
-            f"{self.fastembed_url}/api/embed",
-            json={"model": "nomic-ai/nomic-embed-text-v1.5", "input": text},
+            f"{self.fastembed_url}/embeddings",
+            json={"texts": [text]},
             timeout=30,
         )
         resp.raise_for_status()
-        result = resp.json()
-        if "embeddings" in result:
-            return result["embeddings"][0]
-        if "embedding" in result:
-            return result["embedding"]
-        raise ValueError(f"Unexpected embedding response: {list(result.keys())}")
+        return resp.json()["embeddings"][0]
 
     # ── Tool Registration ───────────────────────────────────────────
 
