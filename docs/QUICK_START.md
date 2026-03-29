@@ -67,7 +67,7 @@ context_ask "How does authentication work?"
 
 ## Step 5: Add SOUL Rules (Optional)
 
-See `docs/SOUL-RULES.md` for recommended rules that teach your agent to use memory proactively. Copy what fits your style into your agent's system prompt.
+See `docs/SOUL-RULES.md` for recommended rules that teach your agent to use memory proactively. Adapt what fits your style.
 
 ## Verify
 

@@ -10,7 +10,7 @@ Below is our recommended configuration. Take it wholesale, adapt it to your styl
 
 ## Recommended Rules
 
-Copy as much or as little of this as you want into your agent's system prompt (SOUL.md, CLAUDE.md, or equivalent).
+Adapt these to your agent's configuration (SOUL.md, CLAUDE.md, or equivalent).
 
 ```markdown
 ## ENGRAM — HOW YOU THINK

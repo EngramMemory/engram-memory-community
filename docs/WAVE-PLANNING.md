@@ -2,7 +2,7 @@
 
 Copy-paste prompt for AI orchestrators that use Engram as their memory backbone. This turns any agent into a research-first, wave-based executor.
 
-## Copy & Paste This Into Your Agent's System Prompt
+## Recommended Agent Rules
 
 ```markdown
 ## Wave Planning — Execution Framework

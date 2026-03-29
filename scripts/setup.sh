@@ -89,7 +89,7 @@ services:
       start_period: 40s
 
   fastembed:
-    image: engrammemory/fastembed:latest
+    image: engrammemory/fastembed:1.0.0
     container_name: engram-fastembed
     restart: unless-stopped
     ports:
