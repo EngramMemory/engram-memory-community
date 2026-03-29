@@ -241,16 +241,20 @@ echo ""
 echo -e "${BLUE}Setting up Python environment...${NC}"
 
 # Create venv and install all dependencies
-if [ ! -f "$SKILL_DIR/.venv/bin/python" ]; then
-    python3 -m venv "$SKILL_DIR/.venv" 2>/dev/null || python3 -m virtualenv "$SKILL_DIR/.venv" 2>/dev/null
+VENV_OK=false
+if python3 -m venv "$SKILL_DIR/.venv" 2>/dev/null; then
+    if [ -f "$SKILL_DIR/.venv/bin/pip" ]; then
+        "$SKILL_DIR/.venv/bin/pip" install -q -r "$SKILL_DIR/requirements.txt" 2>&1 | tail -1
+        VENV_OK=true
+        echo -e "${GREEN}Python dependencies installed (venv)${NC}"
+    fi
 fi
 
-if [ -f "$SKILL_DIR/.venv/bin/pip" ]; then
-    "$SKILL_DIR/.venv/bin/pip" install -q -r "$SKILL_DIR/requirements.txt" 2>&1 | tail -1
-    echo -e "${GREEN}Python dependencies installed${NC}"
-else
-    echo -e "${YELLOW}Could not create venv — installing globally${NC}"
-    pip3 install -q -r "$SKILL_DIR/requirements.txt" 2>&1 | tail -1
+if [ "$VENV_OK" = false ]; then
+    rm -rf "$SKILL_DIR/.venv" 2>/dev/null
+    echo -e "${YELLOW}venv unavailable — installing with pip3${NC}"
+    pip3 install --user -q -r "$SKILL_DIR/requirements.txt" 2>&1 | tail -1
+    echo -e "${GREEN}Python dependencies installed (user)${NC}"
 fi
 
 # Add bin/ to PATH if not already there

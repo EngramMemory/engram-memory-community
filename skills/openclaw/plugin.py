@@ -26,10 +26,8 @@ def run_script(script_path: str, args: List[str]) -> Dict[str, Any]:
 
     venv_python = script_dir / ".venv" / "bin" / "python"
     if not venv_python.exists():
-        return {
-            "success": False,
-            "error": f"Virtual environment not found at {venv_python}. Run setup.sh first."
-        }
+        # Fall back to system python3
+        venv_python = Path("python3")
 
     cmd = [str(venv_python), str(full_path)] + args
 
