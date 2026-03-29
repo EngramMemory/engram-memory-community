@@ -86,7 +86,7 @@ services:
       start_period: 40s
 
   fastembed:
-    image: qdrant/fastembed_api:v0.3.6
+    image: engrammemory/fastembed:latest
     container_name: engram-fastembed
     restart: unless-stopped
     ports:

@@ -21,7 +21,7 @@ services:
       retries: 3
 
   fastembed:
-    image: qdrant/fastembed_api:v0.3.6
+    image: engrammemory/fastembed:latest
     container_name: engram-fastembed
     ports:
       - "11435:8000"
