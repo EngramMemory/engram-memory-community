@@ -1,12 +1,16 @@
 # Engram — SOUL Rules
 
-Add these rules to your agent's system prompt (SOUL.md, CLAUDE.md, or equivalent) to make it think with memory, not just use memory tools.
+Your agent's system prompt is yours. We're not going to tell you how to define your agent's identity or behavior — that's your call.
 
-The goal isn't "call memory_store after tasks." The goal is an agent that **builds understanding over time** — one that recalls before acting, stores what matters without being told, and never asks a question it already knows the answer to.
+What we can offer is a set of rules that make Engram work the way it was designed to: proactively, not reactively. Without guidance, most agents treat memory as a filing cabinet — they store when told and search when asked. With the right rules, your agent builds understanding over time. It recalls before acting, stores what matters without being prompted, and stops asking questions it already knows the answer to.
+
+Below is our recommended configuration. Take it wholesale, adapt it to your style, or just use the parts that make sense for your workflow. The tools work either way — the rules just make them work better.
 
 ---
 
-## Copy This Into Your Agent's System Prompt
+## Recommended Rules
+
+Copy as much or as little of this as you want into your agent's system prompt (SOUL.md, CLAUDE.md, or equivalent).
 
 ```markdown
 ## ENGRAM — HOW YOU THINK
