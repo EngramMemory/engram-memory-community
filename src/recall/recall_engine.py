@@ -261,6 +261,7 @@ class EngramRecallEngine:
 
         # Store in Qdrant (Tier 3)
         payload = {
+            "text": content,
             "content": content,
             "category": category,
             "created_at": time.time(),
@@ -469,7 +470,7 @@ class EngramRecallEngine:
 
             results.append(MemoryResult(
                 doc_id=point.get("id", ""),
-                content=payload.get("content", ""),
+                content=payload.get("content", payload.get("text", "")),
                 score=float(similarity),
                 tier="hash",
                 category=point_category,
@@ -524,7 +525,7 @@ class EngramRecallEngine:
             payload = hit.get("payload", {})
             results.append(MemoryResult(
                 doc_id=str(hit.get("id", "")),
-                content=payload.get("content", ""),
+                content=payload.get("content", payload.get("text", "")),
                 score=float(hit.get("score", 0)),
                 tier="vector",
                 category=payload.get("category", "other"),
