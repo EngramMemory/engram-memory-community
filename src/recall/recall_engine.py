@@ -568,10 +568,11 @@ class EngramRecallEngine:
                 f"{self.config.qdrant_url}/collections/{self.config.collection}/points/delete",
                 json={"points": [doc_id]},
             )
-            response.raise_for_status()
-            removed = True
+            if response.status_code == 200:
+                removed = True
+            # 400/404 means point doesn't exist in Qdrant — not an error
         except Exception as e:
-            logger.error(f"Qdrant delete error: {e}")
+            logger.debug(f"Qdrant delete skipped for {doc_id}: {e}")
 
         if removed:
             logger.debug(f"Forgot memory: {doc_id}")

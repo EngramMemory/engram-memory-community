@@ -489,7 +489,11 @@ class EngramHotTier:
         )
 
         for doc_id, entry_dict in state.get("entries", {}).items():
-            hot._cache[doc_id] = HotMemory.from_dict(entry_dict)
+            entry = HotMemory.from_dict(entry_dict)
+            # Drop entries with empty content (from pre-fix cache)
+            if not entry.content:
+                continue
+            hot._cache[doc_id] = entry
 
         stats = state.get("stats", {})
         hot.stats.total_hits = stats.get("total_hits", 0)
