@@ -254,7 +254,7 @@ class EngramRecallEngine:
 
         # Generate ID
         if doc_id is None:
-            doc_id = f"mem_{uuid.uuid4().hex[:12]}"
+            doc_id = str(uuid.uuid4())
 
         # Embed
         vector = await self._embed(content)
