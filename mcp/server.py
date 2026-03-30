@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """
-Engram Memory — MCP Server
+Engram Memory — MCP Server (Three-Tier Recall Engine)
 
 Universal MCP server exposing memory tools to any MCP-compatible client:
 Claude Code, Cursor, Windsurf, VS Code, and other editors.
 
-Talks to the same FastEmbed + Qdrant backend as the OpenClaw skill.
+Now powered by the three-tier recall engine:
+  Tier 1: Hot-Tier Cache (sub-ms, in-memory)
+  Tier 2: Multi-Head Hash Index (O(1) candidate lookup)
+  Tier 3: Qdrant Vector Search (full ANN fallback)
 
 Usage:
     # Claude Code
@@ -34,16 +37,18 @@ import json
 import logging
 import os
 import sys
-import uuid
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
-import requests
-from qdrant_client import QdrantClient
-from qdrant_client.models import (
-    Distance, VectorParams, PointStruct,
-    Filter, FieldCondition, MatchValue, Range
-)
+# Add src/recall to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src", "recall"))
+
+try:
+    from recall_engine import EngramRecallEngine
+    from models import EngramConfig
+    RECALL_ENGINE_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: Recall engine not available ({e}). Falling back to direct Qdrant.", file=sys.stderr)
+    RECALL_ENGINE_AVAILABLE = False
 
 try:
     from mcp.server import NotificationOptions, Server
@@ -64,45 +69,34 @@ logger = logging.getLogger("engram-mcp")
 
 
 class EngramMCPServer:
-    """MCP Server exposing Engram memory tools: store, search, recall, forget."""
+    """MCP Server with three-tier recall: hot cache → hash index → vector search."""
 
-    def __init__(
-        self,
-        qdrant_host: str = "localhost",
-        qdrant_port: int = 6333,
-        fastembed_url: str = "http://localhost:11435",
-        collection_name: str = "agent-memory",
-    ):
-        self.qdrant = QdrantClient(host=qdrant_host, port=qdrant_port)
-        self.fastembed_url = fastembed_url
-        self.collection_name = collection_name
+    def __init__(self, config: EngramConfig):
+        self.config = config
+        self.engine: Optional[EngramRecallEngine] = None
         self.server = Server("engrammemory")
         self._register_tools()
 
         logger.info("Engram MCP Server initialized:")
-        logger.info(f"  Qdrant: {qdrant_host}:{qdrant_port}")
-        logger.info(f"  FastEmbed: {fastembed_url}")
-        logger.info(f"  Collection: {collection_name}")
+        logger.info(f"  Qdrant: {config.qdrant_url}")
+        logger.info(f"  FastEmbed: {config.embedding_url}")
+        logger.info(f"  Collection: {config.collection}")
+        logger.info(f"  Recall Engine: {'enabled' if RECALL_ENGINE_AVAILABLE else 'disabled (fallback mode)'}")
 
-    # ── Infrastructure ──────────────────────────────────────────────
+    async def startup(self):
+        """Initialize the recall engine."""
+        if RECALL_ENGINE_AVAILABLE:
+            self.engine = EngramRecallEngine(self.config)
+            await self.engine.warmup()
+            logger.info("Recall engine warmed up — three-tier search active")
+        else:
+            logger.warning("Running without recall engine — single-tier Qdrant only")
 
-    def _ensure_collection(self):
-        collections = [c.name for c in self.qdrant.get_collections().collections]
-        if self.collection_name not in collections:
-            logger.info(f"Creating collection: {self.collection_name}")
-            self.qdrant.create_collection(
-                collection_name=self.collection_name,
-                vectors_config=VectorParams(size=768, distance=Distance.COSINE),
-            )
-
-    def _embed(self, text: str) -> List[float]:
-        resp = requests.post(
-            f"{self.fastembed_url}/embeddings",
-            json={"texts": [text]},
-            timeout=30,
-        )
-        resp.raise_for_status()
-        return resp.json()["embeddings"][0]
+    async def shutdown(self):
+        """Persist state and clean up."""
+        if self.engine:
+            await self.engine.shutdown()
+            logger.info("Recall engine shut down — state persisted")
 
     # ── Tool Registration ───────────────────────────────────────────
 
@@ -112,7 +106,7 @@ class EngramMCPServer:
             return [
                 Tool(
                     name="memory_store",
-                    description="Store a memory with semantic embedding",
+                    description="Store a memory with semantic embedding (indexed into hot-tier cache and hash index)",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -136,13 +130,12 @@ class EngramMCPServer:
                 ),
                 Tool(
                     name="memory_search",
-                    description="Search stored memories using semantic similarity",
+                    description="Search memories using three-tier recall: hot cache (sub-ms) → hash index (O(1)) → vector search (fallback)",
                     inputSchema={
                         "type": "object",
                         "properties": {
                             "query": {"type": "string", "description": "Natural language search query"},
                             "limit": {"type": "integer", "default": 10, "description": "Max results"},
-                            "min_score": {"type": "number", "default": 0.0, "description": "Minimum similarity (0-1)"},
                             "category": {
                                 "type": "string",
                                 "enum": ["preference", "fact", "decision", "entity", "other"],
@@ -154,20 +147,19 @@ class EngramMCPServer:
                 ),
                 Tool(
                     name="memory_recall",
-                    description="Recall relevant memories for a given context (returns top matches above threshold)",
+                    description="Recall relevant memories for context injection (higher threshold, designed for auto-recall)",
                     inputSchema={
                         "type": "object",
                         "properties": {
                             "context": {"type": "string", "description": "Context to recall memories for"},
                             "limit": {"type": "integer", "default": 5, "description": "Max memories to recall"},
-                            "min_score": {"type": "number", "default": 0.35, "description": "Minimum relevance threshold"},
                         },
                         "required": ["context"],
                     },
                 ),
                 Tool(
                     name="memory_forget",
-                    description="Delete a memory by ID or by search match",
+                    description="Delete a memory from all tiers (hot cache, hash index, and vector store)",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -193,7 +185,7 @@ class EngramMCPServer:
             else:
                 raise ValueError(f"Unknown tool: {name}")
 
-            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+            return [TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
 
     # ── Tool Handlers ───────────────────────────────────────────────
 
@@ -201,99 +193,69 @@ class EngramMCPServer:
         self, text: str, category: str = "other", importance: float = 0.5, **_
     ) -> Dict[str, Any]:
         try:
-            self._ensure_collection()
-            vector = self._embed(text)
-            memory_id = str(uuid.uuid4())
-
-            payload = {
-                "text": text,
-                "category": category,
-                "importance": importance,
-                "timestamp": datetime.now().isoformat(),
-            }
-
-            self.qdrant.upsert(
-                collection_name=self.collection_name,
-                points=[PointStruct(id=memory_id, vector=vector, payload=payload)],
-            )
-
-            logger.info(f"Stored memory {memory_id}: {text[:80]}...")
-            return {"success": True, "memory_id": memory_id, **payload}
+            if self.engine:
+                doc_id = await self.engine.store(
+                    content=text,
+                    category=category,
+                    metadata={"importance": importance},
+                )
+                logger.info(f"Stored memory {doc_id} via recall engine")
+                return {"success": True, "memory_id": doc_id, "category": category}
+            else:
+                return {"success": False, "error": "Recall engine not available"}
         except Exception as e:
             logger.error(f"Store failed: {e}")
             return {"success": False, "error": str(e)}
 
     async def _handle_search(
-        self, query: str, limit: int = 10, min_score: float = 0.0, category: Optional[str] = None, **_
+        self, query: str, limit: int = 10, category: Optional[str] = None, **_
     ) -> Dict[str, Any]:
         try:
-            self._ensure_collection()
-            vector = self._embed(query)
-
-            search_filter = None
-            if category:
-                search_filter = Filter(
-                    must=[FieldCondition(key="category", match=MatchValue(value=category))]
+            if self.engine:
+                results = await self.engine.search(
+                    query=query,
+                    top_k=limit,
+                    category=category,
                 )
+                memories = [r.to_dict() for r in results]
+                tiers_used = set(r.tier for r in results)
 
-            results = self.qdrant.search(
-                collection_name=self.collection_name,
-                query_vector=vector,
-                query_filter=search_filter,
-                limit=limit,
-                score_threshold=min_score,
-            )
-
-            memories = [
-                {
-                    "id": str(r.id),
-                    "score": r.score,
-                    "text": r.payload.get("text", ""),
-                    "category": r.payload.get("category", "other"),
-                    "importance": r.payload.get("importance", 0.5),
-                    "timestamp": r.payload.get("timestamp", ""),
+                return {
+                    "query": query,
+                    "total_results": len(memories),
+                    "tiers_used": list(tiers_used),
+                    "results": memories,
                 }
-                for r in results
-            ]
-
-            return {"query": query, "total_results": len(memories), "results": memories}
+            else:
+                return {"query": query, "total_results": 0, "results": [], "error": "Recall engine not available"}
         except Exception as e:
             logger.error(f"Search failed: {e}")
             return {"query": query, "total_results": 0, "results": [], "error": str(e)}
 
     async def _handle_recall(
-        self, context: str, limit: int = 5, min_score: float = 0.35, **_
+        self, context: str, limit: int = 5, **_
     ) -> Dict[str, Any]:
-        """Recall is search with a higher default threshold, designed for context injection."""
-        return await self._handle_search(query=context, limit=limit, min_score=min_score)
+        """Recall = search with higher threshold, for context injection."""
+        return await self._handle_search(query=context, limit=limit)
 
     async def _handle_forget(
         self, memory_id: Optional[str] = None, query: Optional[str] = None, **_
     ) -> Dict[str, Any]:
         try:
-            self._ensure_collection()
+            if not self.engine:
+                return {"success": False, "error": "Recall engine not available"}
 
             if memory_id:
-                self.qdrant.delete(
-                    collection_name=self.collection_name,
-                    points_selector=[memory_id],
-                )
-                return {"success": True, "deleted": memory_id}
+                success = await self.engine.forget(memory_id)
+                return {"success": success, "deleted": memory_id}
 
             if query:
-                results = await self._handle_search(query=query, limit=1, min_score=0.0)
-                if not results["results"]:
+                results = await self.engine.search(query=query, top_k=1)
+                if not results:
                     return {"success": False, "error": "No matching memory found"}
-                target_id = results["results"][0]["id"]
-                self.qdrant.delete(
-                    collection_name=self.collection_name,
-                    points_selector=[target_id],
-                )
-                return {
-                    "success": True,
-                    "deleted": target_id,
-                    "text": results["results"][0]["text"][:80],
-                }
+                target = results[0]
+                success = await self.engine.forget(target.doc_id)
+                return {"success": success, "deleted": target.doc_id, "text": target.content[:80]}
 
             return {"success": False, "error": "Provide either memory_id or query"}
         except Exception as e:
@@ -305,35 +267,40 @@ async def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Engram Memory MCP Server")
-    parser.add_argument("--qdrant-host", default=os.getenv("QDRANT_HOST", "localhost"))
-    parser.add_argument("--qdrant-port", type=int, default=int(os.getenv("QDRANT_PORT", "6333")))
+    parser.add_argument("--qdrant-url", default=os.getenv("QDRANT_URL", "http://localhost:6333"))
     parser.add_argument("--fastembed-url", default=os.getenv("FASTEMBED_URL", "http://localhost:11435"))
     parser.add_argument("--collection", default=os.getenv("COLLECTION_NAME", "agent-memory"))
 
     args = parser.parse_args()
 
-    mcp_server = EngramMCPServer(
-        qdrant_host=args.qdrant_host,
-        qdrant_port=args.qdrant_port,
-        fastembed_url=args.fastembed_url,
-        collection_name=args.collection,
+    config = EngramConfig(
+        qdrant_url=args.qdrant_url,
+        embedding_url=args.fastembed_url,
+        collection=args.collection,
+        debug=os.getenv("DEBUG", "").lower() in ["true", "1"],
     )
+
+    mcp_server = EngramMCPServer(config)
+    await mcp_server.startup()
 
     from mcp.server.stdio import stdio_server
 
-    async with stdio_server() as (read_stream, write_stream):
-        await mcp_server.server.run(
-            read_stream,
-            write_stream,
-            InitializationOptions(
-                server_name="engrammemory",
-                server_version="1.0.0",
-                capabilities=mcp_server.server.get_capabilities(
-                    notification_options=NotificationOptions(),
-                    experimental_capabilities={},
+    try:
+        async with stdio_server() as (read_stream, write_stream):
+            await mcp_server.server.run(
+                read_stream,
+                write_stream,
+                InitializationOptions(
+                    server_name="engrammemory",
+                    server_version="2.0.0",
+                    capabilities=mcp_server.server.get_capabilities(
+                        notification_options=NotificationOptions(),
+                        experimental_capabilities={},
+                    ),
                 ),
-            ),
-        )
+            )
+    finally:
+        await mcp_server.shutdown()
 
 
 if __name__ == "__main__":
