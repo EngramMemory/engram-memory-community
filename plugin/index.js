@@ -34,11 +34,11 @@ export default definePluginEntry({
           "Authorization": `Bearer ${apiKey}`,
           "X-SDK-Version": `openclaw-plugin/${ENGRAM_VERSION}`,
         },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, compress: true }),
       });
       if (!res.ok) throw new Error(`Engram intelligence ${res.status}`);
       return res.json();
-      // Returns: { vector, dimension, category, tokens_used, dedup, compressed_vector, ... }
+      // Returns: { vector, compressed_vector, dimension, category, tokens_used, dedup, compression_ratio, ... }
     }
 
     async function cloudOverflowSearch(vector, limit = 5) {
@@ -73,14 +73,29 @@ export default definePluginEntry({
     }
 
     async function getVector(text) {
-      // Cloud: Engram generates the vector (better dedup, classification)
-      // Local: FastEmbed generates the vector
+      // Cloud: Engram generates + compresses the vector.
+      // Every store and search in cloud mode uses compressed vectors
+      // so they're in the same geometric space. The compressed vector
+      // is directly searchable — no decompression needed.
+      // This means every read and write passes through Engram's API.
       if (isCloud) {
         const intel = await cloudIntelligence(text);
-        return { vector: intel.vector, category: intel.category || "other", dedup: intel.dedup };
+        // Use compressed vector if available — this is the key lock-in.
+        // Customer's Qdrant stores compressed vectors that only match
+        // against other vectors compressed with the same matrices.
+        const vector = (intel.compressed_vector && intel.compressed_vector.length > 0)
+          ? intel.compressed_vector
+          : intel.vector;
+        return {
+          vector,
+          category: intel.category || "other",
+          dedup: intel.dedup,
+          compressed: !!(intel.compressed_vector && intel.compressed_vector.length > 0),
+        };
       }
+      // Local: FastEmbed generates uncompressed vectors. Fully independent.
       const vector = await localEmbed(text);
-      return { vector, category: "other", dedup: null };
+      return { vector, category: "other", dedup: null, compressed: false };
     }
 
     async function qdrantWrite(id, vector, payload) {
@@ -139,7 +154,7 @@ export default definePluginEntry({
         required: ["text"],
       },
       async execute(_toolCallId, params) {
-        const { vector, category, dedup } = await getVector(params.text);
+        const { vector, category, dedup, compressed } = await getVector(params.text);
 
         // Dedup: if Engram says this is a duplicate, skip the write
         if (dedup?.is_duplicate) {
@@ -158,6 +173,7 @@ export default definePluginEntry({
           importance: params.importance || 0.5,
           timestamp: new Date().toISOString(),
           access_count: 0,
+          compressed, // Track whether this vector is TurboQuant compressed
         };
 
         // Plugin writes to local Qdrant — Engram never does
