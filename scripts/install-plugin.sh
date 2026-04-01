@@ -1,17 +1,15 @@
 #!/bin/bash
 # Install Engram as the OpenClaw memory plugin
-# Usage: bash scripts/install-plugin.sh [API_KEY] [QDRANT_URL]
+# Usage: bash scripts/install-plugin.sh
 
 set -e
+
+PLUGIN_DIR="$HOME/.openclaw/extensions/engram"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Find openclaw binary
 export PATH="$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/bin:$PATH"
 OPENCLAW=$(command -v openclaw 2>/dev/null || echo "")
-
-API_KEY="${1:-}"
-QDRANT_URL="${2:-http://localhost:6333}"
-PLUGIN_DIR="$HOME/.openclaw/extensions/engram"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 echo "=== Installing Engram Memory Plugin ==="
 
@@ -23,23 +21,22 @@ cp "$SCRIPT_DIR/plugin/openclaw.plugin.json" "$PLUGIN_DIR/"
 
 echo "  Plugin files installed to $PLUGIN_DIR"
 
-# Configure if API key provided
-if [ -n "$API_KEY" ]; then
-  echo "  Configuring with API key ${API_KEY:0:16}..."
-  if [ -z "$OPENCLAW" ]; then
-    echo "  WARNING: openclaw not found in PATH. Configure manually."
-  else
-    $OPENCLAW config set "plugins.entries.engram" "{\"enabled\":true,\"config\":{\"apiKey\":\"$API_KEY\",\"qdrantUrl\":\"$QDRANT_URL\",\"autoCapture\":true,\"autoRecall\":true}}"
-    $OPENCLAW config set "plugins.slots.memory" "engram"
-  fi
-  echo "  Memory slot set to Engram"
+# Configure — local-only mode (no API key needed)
+if [ -n "$OPENCLAW" ]; then
+  $OPENCLAW config set "plugins.entries.engram" '{"enabled":true,"config":{"qdrantUrl":"http://localhost:6333","autoCapture":true,"autoRecall":true}}'
+  $OPENCLAW config set "plugins.slots.memory" "engram"
+  echo "  Memory slot set to Engram (local mode)"
 else
-  echo ""
-  echo "  To activate, run:"
-  echo "    openclaw config set \"plugins.entries.engram\" '{\"enabled\":true,\"config\":{\"apiKey\":\"YOUR_KEY\",\"qdrantUrl\":\"$QDRANT_URL\",\"autoCapture\":true,\"autoRecall\":true}}'"
-  echo "    openclaw config set \"plugins.slots.memory\" \"engram\""
+  echo "  WARNING: openclaw not found in PATH. Configure manually — see README."
 fi
 
 echo ""
 echo "=== Done ==="
+echo ""
+echo "Engram is running in local mode (your Qdrant, no cloud)."
+echo "To connect to Engram Cloud for overflow, compression, and analytics:"
+echo "  1. Get an API key at https://app.engrammemory.ai"
+echo "  2. Add it to your OpenClaw config:"
+echo "     openclaw config set \"plugins.entries.engram.config.apiKey\" \"eng_live_YOUR_KEY\""
+echo ""
 echo "Restart OpenClaw to apply: openclaw gateway restart"

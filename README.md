@@ -52,10 +52,10 @@ This starts Qdrant (vector DB) and FastEmbed (local embedding model) on your mac
 # Clone and install the plugin
 git clone https://github.com/EngramMemory/engram-memory-community.git
 cd engram-memory-community
-bash scripts/install-plugin.sh eng_live_YOUR_KEY http://localhost:6333
+bash scripts/install-plugin.sh
 ```
 
-This installs Engram as a **plugin** (not a skill) and sets it as the memory backend, replacing the built-in SQLite memory with the three-tier recall engine. Get your API key at [app.engrammemory.ai](https://app.engrammemory.ai).
+This installs Engram as a **plugin** (not a skill) and sets it as the memory backend, replacing the built-in SQLite memory with the three-tier recall engine. No API key required — runs fully local with your Qdrant and FastEmbed.
 
 **Claude Code:**
 ```bash
@@ -183,6 +183,21 @@ Engram hooks into OpenClaw's agent lifecycle automatically:
 | `maxRecallResults` | `5` | Max memories per auto-recall |
 | `minRecallScore` | `0.35` | Minimum similarity threshold |
 | `debug` | `false` | Enable debug logging |
+
+---
+
+## Connecting to Engram Cloud (Optional)
+
+Engram runs fully local by default. When you need overflow storage, TurboQuant compression, deduplication, or analytics beyond what your local machine can handle, connect to [Engram Cloud](https://engrammemory.ai):
+
+1. **Get an API key** at [app.engrammemory.ai](https://app.engrammemory.ai) (free tier, no credit card)
+2. **Add it to your OpenClaw config:**
+   ```bash
+   openclaw config set "plugins.entries.engram.config.apiKey" "eng_live_YOUR_KEY"
+   ```
+3. **Restart OpenClaw** — the plugin automatically switches from local to cloud mode
+
+With a key, your memories still live in your Qdrant. Engram Cloud handles embedding, deduplication, and compression in transit — nothing is stored on our servers.
 
 ---
 
