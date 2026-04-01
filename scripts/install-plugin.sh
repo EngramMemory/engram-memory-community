@@ -4,6 +4,10 @@
 
 set -e
 
+# Find openclaw binary
+export PATH="$HOME/.npm-global/bin:$HOME/.local/bin:/usr/local/bin:$PATH"
+OPENCLAW=$(command -v openclaw 2>/dev/null || echo "")
+
 API_KEY="${1:-}"
 QDRANT_URL="${2:-http://localhost:6333}"
 PLUGIN_DIR="$HOME/.openclaw/extensions/engram"
@@ -22,8 +26,12 @@ echo "  Plugin files installed to $PLUGIN_DIR"
 # Configure if API key provided
 if [ -n "$API_KEY" ]; then
   echo "  Configuring with API key ${API_KEY:0:16}..."
-  openclaw config set "plugins.entries.engram" "{\"enabled\":true,\"config\":{\"apiKey\":\"$API_KEY\",\"qdrantUrl\":\"$QDRANT_URL\",\"autoCapture\":true,\"autoRecall\":true}}"
-  openclaw config set "plugins.slots.memory" "engram"
+  if [ -z "$OPENCLAW" ]; then
+    echo "  WARNING: openclaw not found in PATH. Configure manually."
+  else
+    $OPENCLAW config set "plugins.entries.engram" "{\"enabled\":true,\"config\":{\"apiKey\":\"$API_KEY\",\"qdrantUrl\":\"$QDRANT_URL\",\"autoCapture\":true,\"autoRecall\":true}}"
+    $OPENCLAW config set "plugins.slots.memory" "engram"
+  fi
   echo "  Memory slot set to Engram"
 else
   echo ""
