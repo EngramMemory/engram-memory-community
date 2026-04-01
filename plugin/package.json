@@ -1,0 +1,7 @@
+{
+  "name": "@engram/openclaw-plugin",
+  "version": "1.0.0",
+  "description": "Engram Memory plugin for OpenClaw — three-tier brain memory backend",
+  "main": "index.js",
+  "type": "module"
+}

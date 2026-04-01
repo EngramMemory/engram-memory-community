@@ -47,10 +47,15 @@ This starts Qdrant (vector DB) and FastEmbed (local embedding model) on your mac
 
 ### 2. Connect your agent
 
-**OpenClaw:**
+**OpenClaw (replaces default memory system):**
 ```bash
-clawhub install engrammemory
+# Clone and install the plugin
+git clone https://github.com/EngramMemory/engram-memory-community.git
+cd engram-memory-community
+bash scripts/install-plugin.sh eng_live_YOUR_KEY http://localhost:6333
 ```
+
+This installs Engram as a **plugin** (not a skill) and sets it as the memory backend, replacing the built-in SQLite memory with the three-tier recall engine. Get your API key at [app.engrammemory.ai](https://app.engrammemory.ai).
 
 **Claude Code:**
 ```bash
@@ -104,7 +109,11 @@ memory_forget(query="old project requirements")
 
 ```
 engram-memory-community/
-├── plugin.py               ← Main entry — routes all tool calls through recall engine
+├── plugin/                 ← OpenClaw memory plugin (replaces default memory)
+│   ├── index.js                Plugin entry — registers tools + auto-recall/capture
+│   ├── openclaw.plugin.json    Plugin manifest (kind: "memory")
+│   └── package.json
+├── plugin.py               ← Python skill fallback for direct tool calls
 ├── src/
 │   └── recall/             ← Three-tier recall engine
 │       ├── recall_engine.py    Hot → Hash → Vector pipeline

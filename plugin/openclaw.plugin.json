@@ -1,0 +1,68 @@
+{
+  "id": "engram",
+  "kind": "memory",
+  "name": "Engram Memory",
+  "description": "Three-Tier Brain memory backend. Your Qdrant, our intelligence.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "apiKey": {
+        "type": "string",
+        "description": "Engram Cloud API key (eng_live_...)"
+      },
+      "apiUrl": {
+        "type": "string",
+        "description": "Engram Cloud API URL",
+        "default": "https://api.engrammemory.ai"
+      },
+      "qdrantUrl": {
+        "type": "string",
+        "description": "Your Qdrant instance URL",
+        "default": "http://localhost:6333"
+      },
+      "autoCapture": {
+        "type": "boolean",
+        "description": "Auto-capture important facts from conversations",
+        "default": true
+      },
+      "autoRecall": {
+        "type": "boolean",
+        "description": "Auto-inject relevant memories into context",
+        "default": true
+      },
+      "collection": {
+        "type": "string",
+        "description": "Qdrant collection name",
+        "default": "agent-memory"
+      }
+    },
+    "required": ["apiKey"]
+  },
+  "uiHints": {
+    "apiKey": {
+      "label": "Engram API Key",
+      "sensitive": true,
+      "placeholder": "eng_live_...",
+      "help": "Get your key at app.engrammemory.ai"
+    },
+    "apiUrl": {
+      "label": "API URL",
+      "placeholder": "https://api.engrammemory.ai",
+      "advanced": true
+    },
+    "qdrantUrl": {
+      "label": "Qdrant URL",
+      "placeholder": "http://localhost:6333",
+      "help": "Your self-hosted Qdrant instance"
+    },
+    "autoCapture": {
+      "label": "Auto-Capture",
+      "help": "Automatically capture important information from conversations"
+    },
+    "autoRecall": {
+      "label": "Auto-Recall",
+      "help": "Automatically inject relevant memories into context"
+    }
+  }
+}
