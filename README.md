@@ -1,8 +1,17 @@
-# Engram Community Edition
+<div align="center">
 
-**Persistent semantic memory for AI agents. Self-hosted. Open source.**
+<img src="assets/logo.svg" alt="Engram Memory" width="360" />
 
-[![license](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
+**Three-Tiered Brain for AI agents. Self-hosted. Zero API costs.**
+
+[Docs](https://engrammemory.ai/docs) · [Quickstart](#quick-start) · [Dashboard](https://app.engrammemory.ai) · [Cloud SDKs](#engram-cloud)
+
+![npm](https://img.shields.io/npm/v/engrammemory-ai?label=npm&color=10b981&style=flat-square)
+![pypi](https://img.shields.io/pypi/v/engrammemory-ai?label=pypi&color=10b981&style=flat-square)
+![docs](https://img.shields.io/badge/docs-engrammemory.ai-10b981?style=flat-square)
+![license](https://img.shields.io/badge/license-MIT-green?style=flat-square)
+
+</div>
 
 ---
 
