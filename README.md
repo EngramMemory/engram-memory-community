@@ -78,35 +78,50 @@ memory_forget(query="old project requirements")
 ## Architecture
 
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Your Agent    │    │   FastEmbed     │    │     Qdrant      │
-│   (OpenClaw,    │───▶│   (local)       │───▶│   (local)       │
-│    Claude Code, │    │                 │    │                 │
-│    Cursor, etc) │    │                 │    │                 │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         All on your hardware. Nothing leaves your network.
+┌─────────────────┐    ┌──────────────────────────────────────────┐
+│   Your Agent    │    │        Three-Tier Recall Engine          │
+│   (OpenClaw,    │───▶│  Tier 1: Hot Cache   (sub-ms, decay)    │
+│    Claude Code, │    │  Tier 2: Hash Index  (O(1) LSH lookup)  │
+│    Cursor, etc) │    │  Tier 3: Qdrant ANN  (full vector)      │
+└─────────────────┘    └───────────┬──────────────────────────────┘
+                                   │
+                       ┌───────────▼───────────┐
+                       │   FastEmbed (local)    │──▶  Qdrant (local)
+                       └───────────────────────-┘
+              All on your hardware. Nothing leaves your network.
 ```
 
 ### Repo Structure
 
 ```
 engram-memory-community/
+├── plugin.py               ← Main entry — routes all tool calls through recall engine
+├── src/
+│   └── recall/             ← Three-tier recall engine
+│       ├── recall_engine.py    Hot → Hash → Vector pipeline
+│       ├── hot_tier.py         Frequency-adjusted decay cache (sub-ms)
+│       ├── multi_head_hasher.py  LSH O(1) candidate retrieval
+│       ├── matryoshka.py       Vector slicing (768→64 dim)
+│       └── models.py          MemoryResult, EngramConfig
 ├── skills/
 │   └── openclaw/           ← OpenClaw skill (SKILL.md + plugin)
 ├── mcp/
 │   └── server.py           ← MCP server (Claude Code, Cursor, Windsurf, VS Code)
-├── scripts/                ← Shared memory engine
+├── scripts/                ← Setup + fallback scripts
 │   ├── memory_store.py
 │   ├── memory_search.py
 │   ├── fastembed_service.py
 │   └── setup.sh
+├── docker/
+│   └── fastembed/          ← FastEmbed container (Dockerfile + service)
 ├── config/
 │   └── docker-compose.yml
+├── docs/                   ← Architecture, examples, integration guides
 ├── README.md
 └── LICENSE
 ```
 
-The OpenClaw skill and the MCP server both call the same underlying scripts that talk to FastEmbed and Qdrant. Two interfaces, one engine.
+The OpenClaw skill and the MCP server both route through `plugin.py`, which uses the three-tier recall engine for every store and search operation.
 
 ---
 
@@ -182,13 +197,16 @@ Need deduplication, compression, lifecycle management, multi-agent isolation, or
 
 Your Qdrant stays yours. Engram Cloud processes in transit and stores nothing.
 
+**SDKs:**
+- Python: `pip install engrammemory-ai` — [PyPI](https://pypi.org/project/engrammemory-ai/)
+- Node: `npm install engrammemory-ai` — [npm](https://www.npmjs.com/package/engrammemory-ai)
+- [Dashboard](https://app.engrammemory.ai) | [API Docs](https://api.engrammemory.ai/docs)
+
 ---
 
 ## Contributing
 
 Found a bug? Want to add a feature? PRs welcome.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ---
 
