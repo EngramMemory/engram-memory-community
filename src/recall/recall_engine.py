@@ -25,10 +25,14 @@ Usage:
     await engine.shutdown()
 """
 
+import hashlib
+import math
 import os
+import re
 import time
 import asyncio
 import logging
+from collections import Counter
 from typing import List, Optional, Dict, Union
 
 import numpy as np
@@ -47,6 +51,45 @@ from hot_tier import EngramHotTier
 from models import MemoryResult, EngramConfig, RecallEngineHealth
 
 logger = logging.getLogger("engram.engine")
+
+# ─── BM25 Sparse Vectors ────────────────────────────────────────────
+# Hash-based tokenization: no global vocabulary needed, deterministic,
+# works independently across local and cloud deployments.
+
+_STOPWORDS = frozenset({
+    "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
+    "have", "has", "had", "do", "does", "did", "will", "would", "could",
+    "should", "may", "might", "can", "to", "of", "in", "for", "on",
+    "with", "at", "by", "from", "as", "into", "through", "during",
+    "before", "after", "between", "out", "off", "over", "under", "then",
+    "here", "there", "when", "where", "why", "how", "all", "each",
+    "both", "more", "most", "other", "some", "no", "not", "only",
+    "so", "than", "too", "very", "just", "but", "and", "or", "if",
+    "that", "this", "it", "its", "i", "me", "my", "we", "our", "you",
+    "your", "he", "him", "his", "she", "her", "they", "them", "their",
+    "what", "which", "who",
+})
+
+
+def text_to_sparse_vector(text: str) -> Dict:
+    """Convert text to a sparse vector for Qdrant hybrid search.
+
+    Uses hash-based tokenization so no shared vocabulary is needed.
+    Each token is hashed to a stable uint32 index, weighted by TF.
+    """
+    tokens = re.findall(r"[a-z0-9]+", text.lower())
+    tokens = [t for t in tokens if t not in _STOPWORDS and len(t) > 1]
+    if not tokens:
+        return {"indices": [], "values": []}
+    tf = Counter(tokens)
+    indices = []
+    values = []
+    for token, count in tf.items():
+        idx = int(hashlib.md5(token.encode()).hexdigest()[:8], 16) & 0x3FFFFFFF
+        weight = 1.0 + math.log(count) if count > 1 else 1.0
+        indices.append(idx)
+        values.append(round(weight, 4))
+    return {"indices": indices, "values": values}
 
 
 class EngramRecallEngine:
@@ -268,7 +311,10 @@ class EngramRecallEngine:
         # Embed (document prefix for storage)
         vector = await self._embed(content, type="document")
 
-        # Store in Qdrant (Tier 3)
+        # Generate sparse vector for hybrid search
+        sparse = text_to_sparse_vector(content)
+
+        # Store in Qdrant (Tier 3) — named vectors for hybrid search
         payload = {
             "text": content,
             "content": content,
@@ -284,7 +330,10 @@ class EngramRecallEngine:
                 "points": [
                     {
                         "id": doc_id,
-                        "vector": vector.tolist(),
+                        "vector": {
+                            "dense": vector.tolist(),
+                            "bm25": sparse,
+                        },
                         "payload": payload,
                     }
                 ]
@@ -409,7 +458,7 @@ class EngramRecallEngine:
         if self.config.hash_fallback_to_vector:
             remaining = top_k - len(results)
             vector_results = await self._qdrant_search(
-                query_vector, remaining * 2, category  # Over-fetch to filter dupes
+                query_vector, remaining * 2, category, query_text=query
             )
 
             for result in vector_results:
@@ -466,9 +515,11 @@ class EngramRecallEngine:
             if category and point_category != category:
                 continue
 
-            point_vector = np.array(
-                point.get("vector", []), dtype=np.float32
-            )
+            # Handle both named vectors (hybrid) and flat vectors (legacy)
+            raw_vec = point.get("vector", {})
+            if isinstance(raw_vec, dict):
+                raw_vec = raw_vec.get("dense", [])
+            point_vector = np.array(raw_vec, dtype=np.float32)
             if len(point_vector) == 0:
                 continue
 
@@ -500,37 +551,92 @@ class EngramRecallEngine:
         query_vector: np.ndarray,
         top_k: int,
         category: Optional[str] = None,
+        query_text: Optional[str] = None,
     ) -> List[MemoryResult]:
         """
-        Standard Qdrant ANN search (Tier 3 fallback).
+        Hybrid Qdrant search: dense vectors + BM25 sparse vectors with RRF fusion.
+        Falls back to dense-only if hybrid fails (e.g., old collection without sparse vectors).
         """
+        filter_clause = None
+        if category:
+            filter_clause = {
+                "must": [
+                    {"key": "category", "match": {"value": category}}
+                ]
+            }
+
+        # Try hybrid search first (dense + sparse with RRF)
+        if query_text:
+            sparse = text_to_sparse_vector(query_text)
+            if sparse["indices"]:
+                query_body: Dict = {
+                    "prefetch": [
+                        {
+                            "query": query_vector.tolist(),
+                            "using": "dense",
+                            "limit": top_k * 3,
+                        },
+                        {
+                            "query": sparse,
+                            "using": "bm25",
+                            "limit": top_k * 3,
+                        },
+                    ],
+                    "query": {"fusion": "rrf"},
+                    "limit": top_k,
+                    "with_payload": True,
+                }
+                if filter_clause:
+                    query_body["filter"] = filter_clause
+
+                try:
+                    response = await self._http.post(
+                        f"{self.config.qdrant_url}/collections/{self.config.collection}/points/query",
+                        json=query_body,
+                    )
+                    if response.status_code == 200:
+                        data = response.json()
+                        return self._parse_qdrant_results(data.get("result", {}).get("points", []))
+                    else:
+                        logger.debug(f"Hybrid search failed ({response.status_code}), falling back to dense-only")
+                except Exception as e:
+                    logger.debug(f"Hybrid search error, falling back to dense-only: {e}")
+
+        # Fallback: dense-only search (works with old collections too)
         search_body: Dict = {
-            "vector": query_vector.tolist(),
+            "vector": {"name": "dense", "query": query_vector.tolist()},
             "limit": top_k,
             "with_payload": True,
             "score_threshold": self.config.min_recall_score,
         }
 
-        if category:
-            search_body["filter"] = {
-                "must": [
-                    {"key": "category", "match": {"value": category}}
-                ]
-            }
+        if filter_clause:
+            search_body["filter"] = filter_clause
 
         try:
             response = await self._http.post(
                 f"{self.config.qdrant_url}/collections/{self.config.collection}/points/search",
                 json=search_body,
             )
+            # If named vector search fails, try flat vector (legacy collections)
+            if response.status_code != 200:
+                search_body["vector"] = query_vector.tolist()
+                response = await self._http.post(
+                    f"{self.config.qdrant_url}/collections/{self.config.collection}/points/search",
+                    json=search_body,
+                )
             response.raise_for_status()
             data = response.json()
         except Exception as e:
             logger.error(f"Qdrant search error: {e}")
             return []
 
+        return self._parse_qdrant_results(data.get("result", []))
+
+    def _parse_qdrant_results(self, hits: list) -> List[MemoryResult]:
+        """Parse Qdrant search/query results into MemoryResult objects."""
         results = []
-        for hit in data.get("result", []):
+        for hit in hits:
             payload = hit.get("payload", {})
             results.append(MemoryResult(
                 doc_id=str(hit.get("id", "")),
@@ -546,7 +652,6 @@ class EngramRecallEngine:
                 access_count=payload.get("access_count", 0),
                 similarity=float(hit.get("score", 0)),
             ))
-
         return results
 
     # --- Forget ---
