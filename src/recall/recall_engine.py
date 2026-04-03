@@ -398,7 +398,7 @@ class EngramRecallEngine:
             results.append(MemoryResult(
                 doc_id=doc_id,
                 content=entry.content,
-                score=similarity * (1.0 + strength),
+                score=similarity + min(strength * 0.05, 0.1),
                 tier="hot",
                 category=entry.category,
                 metadata=entry.metadata,
@@ -445,42 +445,30 @@ class EngramRecallEngine:
                     metadata=result.metadata,
                 )
 
-        # If hash gave us enough, return
-        if len(results) >= top_k:
-            logger.debug(
-                f"Hash-tier hit: {len(results)} results for '{query[:50]}'"
+        # ── TIER 3: Hybrid Search (always runs) ──
+        # Hybrid (dense + BM25) can find keyword matches that semantic-only misses.
+        # Always run it and merge with Tier 1+2 — best scores win.
+        vector_results = await self._qdrant_search(
+            query_vector, top_k * 2, category, query_text=query
+        )
+
+        for result in vector_results:
+            if result.doc_id in seen_ids:
+                continue
+            result.tier = "vector"
+            results.append(result)
+            seen_ids.add(result.doc_id)
+
+            # Promote to hot-tier
+            self.hot_tier.upsert(
+                doc_id=result.doc_id,
+                vector=query_vector,
+                content=result.content,
+                category=result.category,
+                metadata=result.metadata,
             )
-            return sorted(
-                results, key=lambda r: r.score, reverse=True
-            )[:top_k]
 
-        # ── TIER 3: Full Vector Search (Fallback) ──
-        if self.config.hash_fallback_to_vector:
-            remaining = top_k - len(results)
-            vector_results = await self._qdrant_search(
-                query_vector, remaining * 2, category, query_text=query
-            )
-
-            for result in vector_results:
-                if result.doc_id in seen_ids:
-                    continue
-                result.tier = "vector"
-                results.append(result)
-                seen_ids.add(result.doc_id)
-
-                # Promote to hot-tier
-                self.hot_tier.upsert(
-                    doc_id=result.doc_id,
-                    vector=query_vector,
-                    content=result.content,
-                    category=result.category,
-                    metadata=result.metadata,
-                )
-
-                if len(results) >= top_k:
-                    break
-
-        # Final sort by score
+        # Final sort by score, take top_k
         results.sort(key=lambda r: r.score, reverse=True)
         return results[:top_k]
 
