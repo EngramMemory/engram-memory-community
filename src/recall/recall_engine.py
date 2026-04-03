@@ -196,18 +196,27 @@ class EngramRecallEngine:
 
     # --- Embedding ---
 
-    async def _embed(self, text: str) -> np.ndarray:
+    async def _embed(self, text: str, type: str = None) -> np.ndarray:
         """
         Generate embedding via local FastEmbed service.
+
+        Args:
+            text: Text to embed.
+            type: "document" for storage, "query" for search.
+                  Adds nomic-embed-text-v1.5 task prefixes for better recall.
 
         Returns full-dimension vector (768 for nomic-embed-text-v1.5).
         """
         if not self._http:
             raise RuntimeError("Engine not started. Call warmup() first.")
 
+        body = {"texts": [text]}
+        if type:
+            body["type"] = type
+
         response = await self._http.post(
             f"{self.config.embedding_url}/embeddings",
-            json={"texts": [text]},
+            json=body,
         )
         response.raise_for_status()
         data = response.json()
@@ -256,8 +265,8 @@ class EngramRecallEngine:
         if doc_id is None:
             doc_id = str(uuid.uuid4())
 
-        # Embed
-        vector = await self._embed(content)
+        # Embed (document prefix for storage)
+        vector = await self._embed(content, type="document")
 
         # Store in Qdrant (Tier 3)
         payload = {
@@ -319,8 +328,8 @@ class EngramRecallEngine:
         if not self._http:
             raise RuntimeError("Engine not started. Call warmup() first.")
 
-        # Embed the query
-        query_vector = await self._embed(query)
+        # Embed the query (query prefix for search)
+        query_vector = await self._embed(query, type="query")
         results: List[MemoryResult] = []
 
         # ── TIER 1: Hot-Tier Cache ──

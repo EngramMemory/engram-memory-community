@@ -39,9 +39,17 @@ class FastEmbedService:
             logger.error(f"Failed to load FastEmbed model: {e}")
             raise
     
-    def generate_embeddings(self, texts: List[str]) -> List[List[float]]:
-        """Generate embeddings for list of texts"""
+    def generate_embeddings(self, texts: List[str], prefix: str = None) -> List[List[float]]:
+        """Generate embeddings for list of texts with optional task prefix.
+
+        nomic-embed-text-v1.5 uses task-specific prefixes for best results:
+          - "search_document: " for texts being stored/indexed
+          - "search_query: " for search queries
+        Without prefixes, query-document similarity drops significantly.
+        """
         try:
+            if prefix:
+                texts = [f"{prefix}{t}" for t in texts]
             embeddings = list(self.embedding_model.embed(texts))
             return [embedding.tolist() for embedding in embeddings]
         except Exception as e:
@@ -73,11 +81,17 @@ async def generate_embeddings(request: Dict[str, Any]):
         texts = request.get("texts", [])
         if not texts:
             raise HTTPException(status_code=400, detail="No texts provided")
-        
+
         if not isinstance(texts, list):
             texts = [texts]
-        
-        embeddings = service.generate_embeddings(texts)
+
+        # Task prefix for nomic-embed-text-v1.5
+        # "document" → "search_document: ", "query" → "search_query: "
+        embed_type = request.get("type", None)
+        prefix_map = {"document": "search_document: ", "query": "search_query: "}
+        prefix = prefix_map.get(embed_type)
+
+        embeddings = service.generate_embeddings(texts, prefix=prefix)
         
         return {
             "embeddings": embeddings,
