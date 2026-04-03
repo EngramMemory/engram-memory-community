@@ -76,7 +76,7 @@ class EngramConfig:
     # Hot-Tier Cache
     hot_tier_max_size: int = 1000   # Community: max 1000
     hot_tier_decay_rate: float = 0.1
-    hot_tier_similarity_threshold: float = 0.55
+    hot_tier_similarity_threshold: float = 0.65
     hot_tier_persist_path: str = ".engram/hot_tier.json"
     hot_tier_sweep_interval: float = 3600.0  # Decay sweep every hour
 
@@ -84,7 +84,7 @@ class EngramConfig:
     auto_recall: bool = True
     auto_capture: bool = True
     max_recall_results: int = 5
-    min_recall_score: float = 0.25
+    min_recall_score: float = 0.35
 
     # Search behavior
     search_top_k: int = 10
