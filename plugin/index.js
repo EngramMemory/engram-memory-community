@@ -91,6 +91,8 @@ export default definePluginEntry({
           category: intel.category || "other",
           dedup: intel.dedup,
           compressed: !!(intel.compressed_vector && intel.compressed_vector.length > 0),
+          compressionRatio: intel.compression_ratio || null,
+          qualityScore: intel.quality_score || null,
         };
       }
       // Local: FastEmbed generates uncompressed vectors. Fully independent.
@@ -154,7 +156,7 @@ export default definePluginEntry({
         required: ["text"],
       },
       async execute(_toolCallId, params) {
-        const { vector, category, dedup, compressed } = await getVector(params.text);
+        const { vector, category, dedup, compressed, compressionRatio, qualityScore } = await getVector(params.text);
 
         // Dedup: if Engram says this is a duplicate, skip the write
         if (dedup?.is_duplicate) {
@@ -173,7 +175,11 @@ export default definePluginEntry({
           importance: params.importance || 0.5,
           timestamp: new Date().toISOString(),
           access_count: 0,
-          compressed, // Track whether this vector is TurboQuant compressed
+          compressed,
+          vector_type: compressed ? "turboquant" : "raw",
+          compression_ratio: compressionRatio,
+          quality_score: qualityScore,
+          vector_dim: vector.length,
         };
 
         // Plugin writes to local Qdrant — Engram never does
