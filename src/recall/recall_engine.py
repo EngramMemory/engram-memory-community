@@ -142,6 +142,18 @@ class EngramRecallEngine:
             seed=self.config.hasher_seed,
         )
 
+        # Graph layer (optional, embedded Kuzu)
+        self.graph = None
+        if self.config.graph_enabled:
+            try:
+                from graph_layer import EngramGraphLayer
+                graph_path = os.path.join(self.config.data_dir, "graph.kuzu")
+                self.graph = EngramGraphLayer(graph_path)
+            except ImportError:
+                logger.info("Kuzu not installed — graph layer disabled. pip install kuzu")
+            except Exception as e:
+                logger.warning(f"Graph layer init failed: {e}")
+
         # HTTP client for FastEmbed + Qdrant
         self._http: Optional[httpx.AsyncClient] = None
 
@@ -198,6 +210,14 @@ class EngramRecallEngine:
             self._decay_sweep_loop()
         )
 
+        # Initialize graph schema
+        if self.graph:
+            try:
+                self.graph.ensure_schema()
+                logger.info(f"Graph layer ready: {self.graph.get_stats()}")
+            except Exception as e:
+                logger.warning(f"Graph schema init failed: {e}")
+
         logger.info("Engram Recall Engine started (Three-Tiered Brain)")
 
     async def shutdown(self) -> None:
@@ -214,6 +234,12 @@ class EngramRecallEngine:
         # Close HTTP client
         if self._http:
             await self._http.aclose()
+
+        if self.graph:
+            try:
+                self.graph.close()
+            except Exception:
+                pass
 
         logger.info("Engram Recall Engine stopped")
 
@@ -358,6 +384,17 @@ class EngramRecallEngine:
         # Index in Multi-Head Hasher (Tier 2)
         self.hasher.index(vector, doc_id)
 
+        # Index in graph (entities + memory node)
+        if self.graph:
+            try:
+                from graph_layer import extract_entities
+                self.graph.upsert_memory_node(doc_id, content, category, time.time())
+                entities = extract_entities(content)
+                if entities:
+                    self.graph.add_entity_mentions(doc_id, entities)
+            except Exception as e:
+                logger.debug(f"Graph indexing failed: {e}")
+
         logger.debug(f"Stored memory {doc_id}: {content[:80]}...")
         return doc_id
 
@@ -484,6 +521,33 @@ class EngramRecallEngine:
                 category=result.category,
                 metadata=result.metadata,
             )
+
+        # ── Graph expansion: spreading activation from top results ──
+        if self.graph and results:
+            try:
+                result_ids = [r.doc_id for r in results]
+                self.graph.add_co_retrieval(result_ids)
+
+                graph_candidate_ids = set()
+                for r in results[:3]:
+                    related = self.graph.get_related_memory_ids(
+                        r.doc_id, max_hops=self.config.graph_max_hops
+                    )
+                    graph_candidate_ids.update(related)
+                graph_candidate_ids -= seen_ids
+
+                if graph_candidate_ids:
+                    graph_results = await self._fetch_and_rerank(
+                        query_vector, list(graph_candidate_ids)[:20],
+                        top_k=5, category=category
+                    )
+                    for r in graph_results:
+                        r.tier = "graph"
+                        r.score *= self.config.graph_spreading_weight
+                        results.append(r)
+                        seen_ids.add(r.doc_id)
+            except Exception as e:
+                logger.debug(f"Graph expansion failed: {e}")
 
         # Final sort by score, take top_k
         results.sort(key=lambda r: r.score, reverse=True)
@@ -691,6 +755,13 @@ class EngramRecallEngine:
         if self.hasher.remove(doc_id):
             removed = True
 
+        # Remove from graph
+        if self.graph:
+            try:
+                self.graph.remove_memory(doc_id)
+            except Exception:
+                pass
+
         # Remove from Qdrant
         try:
             response = await self._http.post(
@@ -733,6 +804,15 @@ class EngramRecallEngine:
         # Hash index
         health.hash_index_size = self.hasher.size
         health.avg_hash_candidates = self.hasher.stats.avg_candidates_per_search
+
+        # Graph stats
+        if self.graph:
+            try:
+                gstats = self.graph.get_stats()
+                health.graph_node_count = gstats.get("memory_nodes", 0) + gstats.get("entity_nodes", 0)
+                health.graph_edge_count = gstats.get("mentions_edges", 0) + gstats.get("related_edges", 0) + gstats.get("co_retrieved_edges", 0)
+            except Exception:
+                pass
 
         # Qdrant connectivity
         try:

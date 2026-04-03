@@ -88,6 +88,13 @@ class EngramConfig:
     actr_noise_param: float = 0.2           # s in Boltzmann gate
     actr_max_timestamps: int = 50           # cap per memory (Community: 50, Cloud: unlimited)
 
+    # Graph layer (Community: 500 entities, 1-hop. Cloud: unlimited, multi-hop.)
+    graph_enabled: bool = True
+    graph_db_path: str = ".engram/graph.kuzu"
+    graph_max_hops: int = 1
+    graph_max_entities: int = 500
+    graph_spreading_weight: float = 0.15
+
     # Recall behavior
     auto_recall: bool = True
     auto_capture: bool = True
@@ -123,6 +130,8 @@ class RecallEngineHealth:
     fastembed_connected: bool = False
     hot_tier_hit_rate: float = 0.0
     avg_hash_candidates: float = 0.0
+    graph_node_count: int = 0
+    graph_edge_count: int = 0
     uptime_seconds: float = 0.0
     errors: List[str] = field(default_factory=list)
 
