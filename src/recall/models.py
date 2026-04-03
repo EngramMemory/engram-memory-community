@@ -6,7 +6,7 @@ Shared data structures for the recall engine.
 
 import time
 from dataclasses import dataclass, field
-from typing import Dict, Optional, List
+from typing import Any, Dict, Optional, List
 
 
 @dataclass
@@ -29,6 +29,7 @@ class MemoryResult:
     access_count: int = 0
     strength: float = 0.0     # Ebbinghaus strength (hot-tier only)
     similarity: float = 0.0   # Raw cosine similarity
+    doc_vector: Any = None    # Transient: actual document vector for hot-tier promotion
 
     def to_dict(self) -> dict:
         return {
@@ -75,7 +76,7 @@ class EngramConfig:
     # Hot-Tier Cache
     hot_tier_max_size: int = 1000   # Community: max 1000
     hot_tier_decay_rate: float = 0.1
-    hot_tier_similarity_threshold: float = 0.70
+    hot_tier_similarity_threshold: float = 0.55
     hot_tier_persist_path: str = ".engram/hot_tier.json"
     hot_tier_sweep_interval: float = 3600.0  # Decay sweep every hour
 
@@ -83,7 +84,7 @@ class EngramConfig:
     auto_recall: bool = True
     auto_capture: bool = True
     max_recall_results: int = 5
-    min_recall_score: float = 0.35
+    min_recall_score: float = 0.25
 
     # Search behavior
     search_top_k: int = 10

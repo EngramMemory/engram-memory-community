@@ -71,22 +71,33 @@ _STOPWORDS = frozenset({
 })
 
 
-def text_to_sparse_vector(text: str) -> Dict:
+def text_to_sparse_vector(text: str, boost_specifics: bool = False) -> Dict:
     """Convert text to a sparse vector for Qdrant hybrid search.
 
-    Uses hash-based tokenization so no shared vocabulary is needed.
-    Each token is hashed to a stable uint32 index, weighted by TF.
+    Uses hash-based tokenization with unigrams + bigrams.
+    No shared vocabulary needed — each token hashes to a stable uint32 index.
+    boost_specifics=True weights numbers/versions higher (use at store time).
     """
-    tokens = re.findall(r"[a-z0-9]+", text.lower())
+    # Keep version strings like "16.2" as single tokens
+    tokens = re.findall(r"[a-z0-9]+(?:\.[a-z0-9]+)*", text.lower())
     tokens = [t for t in tokens if t not in _STOPWORDS and len(t) > 1]
     if not tokens:
         return {"indices": [], "values": []}
+
     tf = Counter(tokens)
+
+    # Bigrams: "postgresql 16.2" and "github actions" as single entries
+    for i in range(len(tokens) - 1):
+        bigram = f"{tokens[i]} {tokens[i+1]}"
+        tf[bigram] = tf.get(bigram, 0) + 1
+
     indices = []
     values = []
     for token, count in tf.items():
         idx = int(hashlib.md5(token.encode()).hexdigest()[:8], 16) & 0x3FFFFFFF
         weight = 1.0 + math.log(count) if count > 1 else 1.0
+        if boost_specifics and re.match(r"^[0-9]", token):
+            weight *= 1.5
         indices.append(idx)
         values.append(round(weight, 4))
     return {"indices": indices, "values": values}
@@ -312,7 +323,7 @@ class EngramRecallEngine:
         vector = await self._embed(content, type="document")
 
         # Generate sparse vector for hybrid search
-        sparse = text_to_sparse_vector(content)
+        sparse = text_to_sparse_vector(content, boost_specifics=True)
 
         # Store in Qdrant (Tier 3) — named vectors for hybrid search
         payload = {
@@ -436,10 +447,10 @@ class EngramRecallEngine:
                 results.append(result)
                 seen_ids.add(result.doc_id)
 
-                # Promote to hot-tier on retrieval
+                # Promote to hot-tier with actual document vector
                 self.hot_tier.upsert(
                     doc_id=result.doc_id,
-                    vector=query_vector,  # Will be updated with actual vector
+                    vector=result.doc_vector if result.doc_vector is not None else query_vector,
                     content=result.content,
                     category=result.category,
                     metadata=result.metadata,
@@ -459,10 +470,10 @@ class EngramRecallEngine:
             results.append(result)
             seen_ids.add(result.doc_id)
 
-            # Promote to hot-tier
+            # Promote to hot-tier with actual document vector
             self.hot_tier.upsert(
                 doc_id=result.doc_id,
-                vector=query_vector,
+                vector=result.doc_vector if result.doc_vector is not None else query_vector,
                 content=result.content,
                 category=result.category,
                 metadata=result.metadata,
@@ -529,6 +540,7 @@ class EngramRecallEngine:
                 created_at=payload.get("created_at", 0),
                 access_count=payload.get("access_count", 0),
                 similarity=float(similarity),
+                doc_vector=point_vector,
             ))
 
         results.sort(key=lambda r: r.score, reverse=True)
@@ -562,17 +574,18 @@ class EngramRecallEngine:
                         {
                             "query": query_vector.tolist(),
                             "using": "dense",
-                            "limit": top_k * 3,
+                            "limit": top_k * 2,
                         },
                         {
                             "query": sparse,
                             "using": "bm25",
-                            "limit": top_k * 3,
+                            "limit": top_k * 4,
                         },
                     ],
                     "query": {"fusion": "rrf"},
                     "limit": top_k,
                     "with_payload": True,
+                    "with_vector": True,
                 }
                 if filter_clause:
                     query_body["filter"] = filter_clause
@@ -595,6 +608,7 @@ class EngramRecallEngine:
             "vector": {"name": "dense", "vector": query_vector.tolist()},
             "limit": top_k,
             "with_payload": True,
+            "with_vector": True,
             "score_threshold": self.config.min_recall_score,
         }
 
@@ -626,6 +640,12 @@ class EngramRecallEngine:
         results = []
         for hit in hits:
             payload = hit.get("payload", {})
+            # Extract document vector for hot-tier promotion
+            raw_vec = hit.get("vector", {})
+            if isinstance(raw_vec, dict):
+                raw_vec = raw_vec.get("dense", [])
+            doc_vec = np.array(raw_vec, dtype=np.float32) if raw_vec else None
+
             results.append(MemoryResult(
                 doc_id=str(hit.get("id", "")),
                 content=payload.get("content", payload.get("text", "")),
@@ -639,6 +659,7 @@ class EngramRecallEngine:
                 created_at=payload.get("created_at", 0),
                 access_count=payload.get("access_count", 0),
                 similarity=float(hit.get("score", 0)),
+                doc_vector=doc_vec if doc_vec is not None and len(doc_vec) > 0 else None,
             ))
         return results
 
