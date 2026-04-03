@@ -27,8 +27,9 @@ class MemoryResult:
     metadata: Dict = field(default_factory=dict)
     created_at: float = 0.0
     access_count: int = 0
-    strength: float = 0.0     # Ebbinghaus strength (hot-tier only)
+    strength: float = 0.0     # ACT-R activation (hot-tier only)
     similarity: float = 0.0   # Raw cosine similarity
+    retrieval_probability: float = 0.0  # ACT-R Boltzmann gate (0-1)
     doc_vector: Any = None    # Transient: actual document vector for hot-tier promotion
 
     def to_dict(self) -> dict:
@@ -43,6 +44,7 @@ class MemoryResult:
             "access_count": self.access_count,
             "strength": round(self.strength, 4),
             "similarity": round(self.similarity, 4),
+            "retrieval_probability": round(self.retrieval_probability, 4),
         }
 
 
@@ -79,6 +81,12 @@ class EngramConfig:
     hot_tier_similarity_threshold: float = 0.65
     hot_tier_persist_path: str = ".engram/hot_tier.json"
     hot_tier_sweep_interval: float = 3600.0  # Decay sweep every hour
+
+    # ACT-R parameters (Community: fixed defaults. Cloud: adaptive per-user.)
+    actr_decay_param: float = 0.5           # d in B_i = ln(Σ t_j^{-d})
+    actr_retrieval_threshold: float = -0.5  # τ in Boltzmann gate
+    actr_noise_param: float = 0.2           # s in Boltzmann gate
+    actr_max_timestamps: int = 50           # cap per memory (Community: 50, Cloud: unlimited)
 
     # Recall behavior
     auto_recall: bool = True

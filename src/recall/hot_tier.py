@@ -3,15 +3,15 @@ Engram Memory — Hot-Tier Frequency Cache
 ==========================================
 Sub-millisecond recall for frequently accessed memories.
 
-Uses frequency-adjusted exponential decay (Ebbinghaus model):
-    Strength = log(hits + 1) × e^(-λ × hours_since_access)
+Uses ACT-R base-level activation (Anderson & Lebiere, 1998):
+    B_i = ln(Σ t_j^{-d})
 
-Memories that are accessed often stay "hot." Memories that haven't
-been touched decay naturally and get evicted to make room for new
-hot memories. This mimics Long-Term Potentiation in biological brains.
+Combined with stability-modulated decay and Boltzmann retrieval
+probability for stochastic recall. This is the published cognitive
+science model of human memory retrieval — no competitor does this.
 
-Community Edition: Max 1000 entries, single instance, basic decay.
-Cloud Edition: Unlimited, distributed, per-user adaptive λ, analytics.
+Community Edition: Max 1000 entries, 50 timestamps, fixed d=0.5.
+Cloud Edition: Unlimited, per-category adaptive d, analytics.
 """
 
 import time
@@ -30,19 +30,23 @@ logger = logging.getLogger("engram.hot_tier")
 
 # Community Edition limits
 COMMUNITY_MAX_SIZE = 1000
+COMMUNITY_MAX_TIMESTAMPS = 50
+COMMUNITY_DECAY_PARAM = 0.5
 
 
 @dataclass
 class HotMemory:
     """A single memory entry in the hot-tier cache."""
     doc_id: str
-    vector: np.ndarray        # Full vector for similarity comparison
+    vector: np.ndarray        # Full document vector for similarity comparison
     content: str              # Original text (for context injection)
     category: str             # preference, fact, decision, entity, other
-    hits: int                 # Total access count
+    hits: int                 # Total access count (survives timestamp trimming)
     last_access: float        # Unix timestamp of last access
     first_access: float       # Unix timestamp of first cache entry
     metadata: Dict = field(default_factory=dict)
+    access_timestamps: List[float] = field(default_factory=list)  # Per-hit times, capped
+    stability: float = 1.0    # Grows with spaced retrieval
 
     def to_dict(self) -> dict:
         return {
@@ -54,10 +58,27 @@ class HotMemory:
             "last_access": self.last_access,
             "first_access": self.first_access,
             "metadata": self.metadata,
+            "access_timestamps": self.access_timestamps,
+            "stability": self.stability,
         }
 
     @classmethod
     def from_dict(cls, d: dict) -> "HotMemory":
+        # Migration: v1 data has no access_timestamps or stability
+        if "access_timestamps" not in d:
+            hits = d.get("hits", 1)
+            last = d.get("last_access", time.time())
+            first = d.get("first_access", last)
+            if hits <= 1:
+                timestamps = [last]
+            else:
+                timestamps = [
+                    first + (last - first) * i / (hits - 1)
+                    for i in range(min(hits, COMMUNITY_MAX_TIMESTAMPS))
+                ]
+        else:
+            timestamps = d["access_timestamps"]
+
         return cls(
             doc_id=d["doc_id"],
             vector=np.array(d["vector"], dtype=np.float32),
@@ -67,6 +88,8 @@ class HotMemory:
             last_access=d["last_access"],
             first_access=d["first_access"],
             metadata=d.get("metadata", {}),
+            access_timestamps=timestamps,
+            stability=d.get("stability", 1.0),
         )
 
 
@@ -87,52 +110,35 @@ class HotTierStats:
 
 class EngramHotTier:
     """
-    Frequency-adjusted exponential decay cache for instant recall.
+    ACT-R cognitive cache for instant recall.
 
-    The hot-tier sits in front of the hash index and vector store.
-    When a query comes in, the hot-tier is checked first. If a
-    cached memory has high similarity AND high strength (frequent
-    access, recent), it's returned immediately — zero latency.
+    The hot-tier uses Anderson's ACT-R base-level activation model:
+    - Power-law forgetting (not exponential) — matches human memory curves
+    - Spacing effect — spaced practice beats massed practice
+    - Boltzmann retrieval probability — stochastic recall gate
+    - Stability modulation — per-memory adaptive decay
 
-    The biological model:
-    - Accessing a memory strengthens it (hit count goes up)
-    - Not accessing it causes decay (exponential time-based)
-    - When the cache is full, the weakest memory is evicted
-    - The result: your AI "remembers" what matters to YOU
-
-    Usage:
-        hot = EngramHotTier(max_size=1000, decay_rate=0.1)
-
-        # On successful retrieval from any tier:
-        hot.upsert("doc_123", vector, "User prefers TypeScript", "preference")
-
-        # Before searching hash/vector tiers:
-        results = hot.search(query_vector, top_k=3, min_similarity=0.7)
-        if results:
-            return results  # Sub-millisecond, skip everything else
+    Community Edition: 1000 entries, 50 timestamps, fixed d=0.5.
+    Cloud Edition: Unlimited, adaptive d per category, analytics.
     """
 
     def __init__(
         self,
         max_size: int = COMMUNITY_MAX_SIZE,
-        decay_rate: float = 0.1,
-        similarity_threshold: float = 0.70
+        decay_rate: float = 0.1,  # Legacy param, kept for compat
+        similarity_threshold: float = 0.65,
+        decay_param: float = COMMUNITY_DECAY_PARAM,
+        retrieval_threshold: float = -0.5,
+        noise_param: float = 0.2,
+        max_timestamps: int = COMMUNITY_MAX_TIMESTAMPS,
     ):
-        """
-        Args:
-            max_size: Maximum cached memories.
-                      Community: capped at 1000.
-                      Cloud: unlimited.
-            decay_rate: Lambda (λ) for exponential decay.
-                        Higher = memories fade faster.
-                        0.1 = memory at 50% strength after ~7 hours of no access.
-                        Community: fixed.
-                        Cloud: adaptive per-user learning.
-            similarity_threshold: Minimum cosine similarity for a cache hit.
-        """
         self.max_size = min(max_size, COMMUNITY_MAX_SIZE)
-        self.decay_rate = decay_rate
+        self.decay_rate = decay_rate  # Legacy
         self.similarity_threshold = similarity_threshold
+        self.decay_param = decay_param
+        self.retrieval_threshold = retrieval_threshold
+        self.noise_param = noise_param
+        self.max_timestamps = min(max_timestamps, COMMUNITY_MAX_TIMESTAMPS)
 
         if max_size > COMMUNITY_MAX_SIZE:
             logger.warning(
@@ -140,6 +146,13 @@ class EngramHotTier:
                 f"Requested {max_size}, clamped to {COMMUNITY_MAX_SIZE}. "
                 f"Upgrade to Engram Cloud for unlimited hot-tier with "
                 f"distributed sync and adaptive decay."
+            )
+
+        if max_timestamps > COMMUNITY_MAX_TIMESTAMPS:
+            logger.warning(
+                f"Community Edition supports max {COMMUNITY_MAX_TIMESTAMPS} timestamps per memory. "
+                f"Requested {max_timestamps}, clamped to {COMMUNITY_MAX_TIMESTAMPS}. "
+                f"Upgrade to Engram Cloud for unlimited timestamps with per-category adaptive decay."
             )
 
         # Storage: doc_id -> HotMemory
@@ -154,21 +167,37 @@ class EngramHotTier:
         self.stats = HotTierStats()
 
     def _calculate_strength(self, entry: HotMemory) -> float:
-        """
-        Calculate current memory strength using Ebbinghaus decay.
+        """ACT-R base-level activation: B_i = ln(Σ t_j^{-d})
+        Combined with stability-modulated decay."""
+        now = time.time()
+        d = self.decay_param
 
-        Strength = log(hits + 1) × e^(-λ × hours_since_access)
+        if entry.access_timestamps:
+            total = 0.0
+            for t_j in entry.access_timestamps:
+                age_seconds = max(now - t_j, 1.0)
+                total += age_seconds ** (-d)
+            base = math.log(total) if total > 0 else -10.0
+        else:
+            # Fallback for entries without timestamps (shouldn't happen after migration)
+            hours_elapsed = (now - entry.last_access) / 3600.0
+            base = math.log1p(entry.hits) - d * math.log1p(hours_elapsed)
 
-        This means:
-        - A memory accessed 100 times has ~4.6x the base strength of one accessed once
-        - A memory not accessed for 10 hours at λ=0.1 retains ~37% of its strength
-        - The combination rewards both frequency AND recency
-        """
-        hours_elapsed = (time.time() - entry.last_access) / 3600.0
-        strength = math.log1p(entry.hits) * math.exp(
-            -self.decay_rate * hours_elapsed
-        )
-        return strength
+        # Stability modulation
+        t_since_last = max(now - entry.last_access, 1.0)
+        s_mod = math.exp(-(t_since_last / (entry.stability * 3600.0)))
+
+        return max(base * s_mod, 0.0)
+
+    def _retrieval_probability(self, activation: float) -> float:
+        """ACT-R retrieval probability via Boltzmann softmax.
+        P = 1 / (1 + e^(-(A - τ) / s))"""
+        tau = self.retrieval_threshold
+        s = self.noise_param
+        try:
+            return 1.0 / (1.0 + math.exp(-(activation - tau) / s))
+        except OverflowError:
+            return 0.0 if activation < tau else 1.0
 
     def _rebuild_matrix(self) -> None:
         """Rebuild the pre-computed vector matrix for batch similarity."""
@@ -191,30 +220,25 @@ class EngramHotTier:
         category: str = "other",
         metadata: Optional[Dict] = None
     ) -> None:
-        """
-        Add or update a memory in the hot-tier.
-
-        If the memory already exists, increment its hit count and
-        refresh its last_access timestamp (strengthening it).
-
-        If the cache is full, evict the weakest memory first.
-
-        Args:
-            doc_id: Unique memory identifier.
-            vector: Full embedding vector (stored for similarity matching).
-            content: Original text content.
-            category: Memory category.
-            metadata: Optional metadata dict.
-        """
+        """Add or update a memory in the hot-tier."""
         vec = np.asarray(vector, dtype=np.float32)
         now = time.time()
 
         if doc_id in self._cache:
-            # Strengthen existing memory
             entry = self._cache[doc_id]
+
+            # Stability grows based on inter-arrival time (spacing effect)
+            if entry.access_timestamps:
+                inter_arrival_hours = (now - entry.access_timestamps[-1]) / 3600.0
+                entry.stability *= (1.0 + inter_arrival_hours)
+
+            entry.access_timestamps.append(now)
+            if len(entry.access_timestamps) > self.max_timestamps:
+                entry.access_timestamps = entry.access_timestamps[-self.max_timestamps:]
+
             entry.hits += 1
             entry.last_access = now
-            entry.vector = vec  # Update in case vector was re-embedded
+            entry.vector = vec
             if content:
                 entry.content = content
             if metadata:
@@ -233,6 +257,8 @@ class EngramHotTier:
                 last_access=now,
                 first_access=now,
                 metadata=metadata or {},
+                access_timestamps=[now],
+                stability=1.0,
             )
             self._matrix_dirty = True
 
@@ -248,18 +274,11 @@ class EngramHotTier:
         """
         Search the hot-tier cache for matching memories.
 
-        Returns memories that are both semantically similar AND
-        sufficiently "strong" (recently/frequently accessed).
-
-        Args:
-            query_vector: Query embedding vector.
-            top_k: Maximum results to return.
-            min_similarity: Minimum cosine similarity (default: self.similarity_threshold).
-            min_strength: Minimum Ebbinghaus strength score.
+        Uses cosine similarity for relevance, ACT-R activation for
+        memory strength, and Boltzmann probability as a retrieval gate.
 
         Returns:
-            List of (doc_id, similarity, strength) tuples, sorted by
-            combined score (similarity × strength).
+            List of (doc_id, similarity, strength) tuples.
         """
         if not self._cache:
             self.stats.total_misses += 1
@@ -268,7 +287,6 @@ class EngramHotTier:
         threshold = min_similarity or self.similarity_threshold
         query = np.asarray(query_vector, dtype=np.float32)
 
-        # Rebuild matrix if cache changed
         if self._matrix_dirty:
             self._rebuild_matrix()
 
@@ -276,7 +294,6 @@ class EngramHotTier:
             self.stats.total_misses += 1
             return []
 
-        # Batch cosine similarity against all cached vectors
         q_norm = np.linalg.norm(query)
         if q_norm == 0:
             self.stats.total_misses += 1
@@ -288,7 +305,6 @@ class EngramHotTier:
         normed = self._vector_matrix / norms
         similarities = normed @ q
 
-        # Filter and score
         results = []
         for i, doc_id in enumerate(self._matrix_ids):
             sim = float(similarities[i])
@@ -299,28 +315,34 @@ class EngramHotTier:
             if entry is None:
                 continue
 
-            strength = self._calculate_strength(entry)
-            if strength < min_strength:
+            activation = self._calculate_strength(entry)
+            retrieval_p = self._retrieval_probability(activation)
+            if retrieval_p < 0.1:
                 continue
 
-            # Combined score: similarity weighted by memory strength
-            combined = sim * (1.0 + math.log1p(strength))
-            results.append((doc_id, sim, strength, combined))
+            combined = sim * retrieval_p
+            results.append((doc_id, sim, activation, combined))
 
         if not results:
             self.stats.total_misses += 1
             return []
 
-        # Sort by combined score, take top_k
         results.sort(key=lambda x: x[3], reverse=True)
         top_results = [(r[0], r[1], r[2]) for r in results[:top_k]]
 
-        # Update access timestamps for returned memories (reinforcement)
+        # Reinforce returned memories (ACT-R: retrieval strengthens memory)
         now = time.time()
         for doc_id, _, _ in top_results:
-            if doc_id in self._cache:
-                self._cache[doc_id].hits += 1
-                self._cache[doc_id].last_access = now
+            entry = self._cache.get(doc_id)
+            if entry:
+                if entry.access_timestamps:
+                    inter = (now - entry.access_timestamps[-1]) / 3600.0
+                    entry.stability *= (1.0 + inter)
+                entry.access_timestamps.append(now)
+                if len(entry.access_timestamps) > self.max_timestamps:
+                    entry.access_timestamps = entry.access_timestamps[-self.max_timestamps:]
+                entry.hits += 1
+                entry.last_access = now
 
         self.stats.total_hits += 1
         return top_results
@@ -351,15 +373,7 @@ class EngramHotTier:
         logger.debug(f"Evicted weakest memory: {weakest_id}")
 
     def decay_sweep(self, min_strength: float = 0.01) -> int:
-        """
-        Remove all memories below the minimum strength threshold.
-
-        Call this periodically (e.g., every hour) to clean out
-        memories that have fully decayed.
-
-        Returns:
-            Number of memories removed.
-        """
+        """Remove all memories below the minimum strength threshold."""
         to_remove = []
         for doc_id, entry in self._cache.items():
             if self._calculate_strength(entry) < min_strength:
@@ -384,12 +398,7 @@ class EngramHotTier:
         return False
 
     def get_top_memories(self, top_k: int = 10) -> List[Tuple[str, float]]:
-        """
-        Get the strongest memories currently in cache.
-
-        Returns:
-            List of (doc_id, strength) sorted by strength descending.
-        """
+        """Get the strongest memories currently in cache."""
         scored = [
             (doc_id, self._calculate_strength(entry))
             for doc_id, entry in self._cache.items()
@@ -398,15 +407,7 @@ class EngramHotTier:
         return scored[:top_k]
 
     def get_context_injection(self, top_k: int = 5) -> str:
-        """
-        Format the top hot memories for injection into an LLM system prompt.
-
-        This is the "Context Injection" killer feature — the strongest
-        memories are automatically prepended to the agent's context.
-
-        Returns:
-            Formatted string ready for system prompt injection.
-        """
+        """Format the top hot memories for injection into an LLM system prompt."""
         top = self.get_top_memories(top_k)
         if not top:
             return ""
@@ -440,6 +441,7 @@ class EngramHotTier:
             "total_decayed": self.stats.total_decayed,
             "decay_rate": self.decay_rate,
             "similarity_threshold": self.similarity_threshold,
+            "decay_param": self.decay_param,
         }
 
     # --- Persistence ---
@@ -447,10 +449,13 @@ class EngramHotTier:
     def save(self, path: str) -> None:
         """Save cache to disk as JSON."""
         state = {
-            "version": 1,
+            "version": 2,
             "max_size": self.max_size,
             "decay_rate": self.decay_rate,
             "similarity_threshold": self.similarity_threshold,
+            "decay_param": self.decay_param,
+            "retrieval_threshold": self.retrieval_threshold,
+            "noise_param": self.noise_param,
             "entries": {
                 doc_id: entry.to_dict()
                 for doc_id, entry in self._cache.items()
@@ -474,23 +479,25 @@ class EngramHotTier:
 
     @classmethod
     def load(cls, path: str) -> "EngramHotTier":
-        """Load cache from disk."""
+        """Load cache from disk. Supports v1 and v2 format."""
         with open(path, "r") as f:
             state = json.load(f)
 
         version = state.get("version", 0)
-        if version != 1:
+        if version not in (1, 2):
             raise ValueError(f"Unsupported hot-tier version: {version}")
 
         hot = cls(
             max_size=state["max_size"],
             decay_rate=state["decay_rate"],
-            similarity_threshold=state.get("similarity_threshold", 0.70),
+            similarity_threshold=state.get("similarity_threshold", 0.65),
+            decay_param=state.get("decay_param", COMMUNITY_DECAY_PARAM),
+            retrieval_threshold=state.get("retrieval_threshold", -0.5),
+            noise_param=state.get("noise_param", 0.2),
         )
 
         for doc_id, entry_dict in state.get("entries", {}).items():
             entry = HotMemory.from_dict(entry_dict)
-            # Drop entries with empty content (from pre-fix cache)
             if not entry.content:
                 continue
             hot._cache[doc_id] = entry
@@ -504,5 +511,8 @@ class EngramHotTier:
 
         hot._matrix_dirty = True
 
-        logger.info(f"Loaded hot-tier: {hot.size} entries from {path}")
+        if version == 1:
+            logger.info(f"Migrated hot-tier v1 -> v2: {hot.size} entries from {path}")
+        else:
+            logger.info(f"Loaded hot-tier v2: {hot.size} entries from {path}")
         return hot

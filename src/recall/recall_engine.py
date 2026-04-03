@@ -129,6 +129,10 @@ class EngramRecallEngine:
             max_size=self.config.hot_tier_max_size,
             decay_rate=self.config.hot_tier_decay_rate,
             similarity_threshold=self.config.hot_tier_similarity_threshold,
+            decay_param=self.config.actr_decay_param,
+            retrieval_threshold=self.config.actr_retrieval_threshold,
+            noise_param=self.config.actr_noise_param,
+            max_timestamps=self.config.actr_max_timestamps,
         )
 
         self.hasher = EngramMultiHeadHasher(
@@ -406,16 +410,18 @@ class EngramRecallEngine:
             if category and entry.category != category:
                 continue
 
+            retrieval_p = self.hot_tier._retrieval_probability(strength)
             results.append(MemoryResult(
                 doc_id=doc_id,
                 content=entry.content,
-                score=similarity + min(strength * 0.05, 0.1),
+                score=similarity * retrieval_p,
                 tier="hot",
                 category=entry.category,
                 metadata=entry.metadata,
                 access_count=entry.hits,
                 strength=strength,
                 similarity=similarity,
+                retrieval_probability=retrieval_p,
             ))
 
         # If hot-tier gave us enough, return early
