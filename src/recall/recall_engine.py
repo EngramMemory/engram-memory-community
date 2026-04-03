@@ -592,7 +592,7 @@ class EngramRecallEngine:
 
         # Fallback: dense-only search (works with old collections too)
         search_body: Dict = {
-            "vector": {"name": "dense", "query": query_vector.tolist()},
+            "vector": {"name": "dense", "vector": query_vector.tolist()},
             "limit": top_k,
             "with_payload": True,
             "score_threshold": self.config.min_recall_score,
