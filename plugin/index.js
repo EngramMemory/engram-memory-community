@@ -1,6 +1,6 @@
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 
-const ENGRAM_VERSION = "1.0.1";
+const ENGRAM_VERSION = "1.1.0";
 
 export default definePluginEntry({
   id: "engram",
@@ -18,6 +18,22 @@ export default definePluginEntry({
     const autoCapture = cfg.autoCapture !== false;
     const autoRecall = cfg.autoRecall !== false;
     const isCloud = !!apiKey;
+
+    // Detect collection format (flat vs named vectors)
+    let useNamedVectors = false;
+    (async () => {
+      try {
+        const res = await fetch(`${qdrantUrl}/collections/${collection}`);
+        if (res.ok) {
+          const info = await res.json();
+          const vectors = info?.result?.config?.params?.vectors || {};
+          // Named vectors have sub-objects like { dense: { size: 768 } }
+          // Flat vectors have { size: 768 } directly
+          useNamedVectors = !("size" in vectors) && ("dense" in vectors);
+          api.logger.info(`engram: collection '${collection}' uses ${useNamedVectors ? "named" : "flat"} vectors`);
+        }
+      } catch {}
+    })();
 
     api.logger.info(`engram: registered (${isCloud ? "cloud" : "local"}, qdrant: ${qdrantUrl}, v${ENGRAM_VERSION})`);
 
@@ -101,19 +117,31 @@ export default definePluginEntry({
     }
 
     async function qdrantWrite(id, vector, payload) {
+      const point = { id, payload };
+      if (useNamedVectors) {
+        point.vector = { dense: vector };
+      } else {
+        point.vector = vector;
+      }
       const res = await fetch(`${qdrantUrl}/collections/${collection}/points`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ points: [{ id, vector, payload }] }),
+        body: JSON.stringify({ points: [point] }),
       });
       if (!res.ok) throw new Error(`Qdrant write ${res.status}`);
     }
 
     async function qdrantSearch(vector, limit = 5) {
+      const body = { limit, with_payload: true, score_threshold: 0.3 };
+      if (useNamedVectors) {
+        body.vector = { name: "dense", vector: vector };
+      } else {
+        body.vector = vector;
+      }
       const res = await fetch(`${qdrantUrl}/collections/${collection}/points/search`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ vector, limit, with_payload: true, score_threshold: 0.3 }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error(`Qdrant search ${res.status}`);
       const data = await res.json();
