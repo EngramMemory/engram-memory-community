@@ -110,8 +110,35 @@ services:
         reservations:
           memory: 2G
 
+  mcp-server:
+    build:
+      context: ${ENGRAM_REPO_DIR}
+      dockerfile: docker/mcp/Dockerfile
+    container_name: engram-mcp
+    restart: unless-stopped
+    ports:
+      - "8585:8585"
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+      - FASTEMBED_URL=http://fastembed:8000
+      - COLLECTION_NAME=agent-memory
+      - DATA_DIR=/app/data
+    volumes:
+      - mcp_data:/app/data
+    depends_on:
+      - qdrant
+      - fastembed
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8585/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
 volumes:
   qdrant_storage:
+    driver: local
+  mcp_data:
     driver: local
 EOF
 
@@ -150,6 +177,7 @@ wait_for_service() {
 
 wait_for_service "qdrant" "http://localhost:6333/health"
 wait_for_service "fastembed" "http://localhost:11435/health"
+wait_for_service "mcp-server" "http://localhost:8585/health"
 
 # Test the embedding API
 echo ""
@@ -294,6 +322,8 @@ echo "   Search context:        engram-context find \"authentication\""
 echo "   Ask questions:         engram-ask \"How does the API work?\""
 echo ""
 echo -e "${YELLOW}Service URLs:${NC}"
+echo "   MCP Server:    http://localhost:8585/health"
+echo "   MCP Tools:     http://localhost:8585/tools"
 echo "   Qdrant Web UI: http://localhost:6333/dashboard"
 echo "   FastEmbed API: http://localhost:11435/docs"
 echo ""
