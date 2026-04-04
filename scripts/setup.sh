@@ -69,7 +69,7 @@ version: '3.8'
 
 services:
   qdrant:
-    image: qdrant/qdrant:v1.11.3
+    image: qdrant/qdrant:v1.17.0
     container_name: qdrant-memory
     restart: unless-stopped
     ports:
@@ -173,20 +173,18 @@ collection_response=$(curl -s -X PUT http://localhost:6333/collections/agent-mem
     -H "Content-Type: application/json" \
     -d '{
         "vectors": {
-            "size": 768,
-            "distance": "Cosine"
+            "dense": {
+                "size": 768,
+                "distance": "Cosine"
+            }
+        },
+        "sparse_vectors": {
+            "bm25": {}
         },
         "optimizers_config": {
             "default_segment_number": 2
         },
-        "replication_factor": 1,
-        "quantization_config": {
-            "scalar": {
-                "type": "int8",
-                "quantile": 0.99,
-                "always_ram": true
-            }
-        }
+        "replication_factor": 1
     }')
 
 if echo "$collection_response" | grep -q '"result":true'; then
