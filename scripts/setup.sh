@@ -6,6 +6,7 @@ set -euo pipefail
 
 # Resolve repo root before we cd anywhere
 ENGRAM_REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export ENGRAM_REPO_DIR
 
 # Colors for output
 RED='\033[0;31m'
