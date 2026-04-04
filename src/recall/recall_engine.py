@@ -218,6 +218,17 @@ class EngramRecallEngine:
             except Exception as e:
                 logger.warning(f"Graph schema init failed: {e}")
 
+        # Initialize consolidator (manual-only in Community)
+        self.consolidator = None
+        if self.config.consolidation_enabled and self.graph:
+            try:
+                from consolidation import EngramConsolidator
+                self.consolidator = EngramConsolidator(self)
+            except ImportError:
+                logger.debug("Consolidation module not available")
+            except Exception as e:
+                logger.warning(f"Consolidator init failed: {e}")
+
         logger.info("Engram Recall Engine started (Three-Tiered Brain)")
 
     async def shutdown(self) -> None:

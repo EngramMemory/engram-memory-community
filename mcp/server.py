@@ -168,6 +168,40 @@ class EngramMCPServer:
                         },
                     },
                 ),
+                Tool(
+                    name="memory_consolidate",
+                    description=(
+                        "Janitor: find and merge near-duplicate memories. "
+                        "Community: fixed 0.95 threshold. "
+                        "Upgrade to Engram Cloud for tunable thresholds and auto-scheduling."
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "threshold": {
+                                "type": "number",
+                                "default": 0.95,
+                                "description": "Similarity threshold (Community: fixed at 0.95)",
+                            },
+                        },
+                    },
+                ),
+                Tool(
+                    name="memory_connect",
+                    description=(
+                        "Librarian: discover cross-category connections for a memory. "
+                        "Community: max 3 connections per call. "
+                        "Upgrade to Engram Cloud for unlimited connections."
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "memory_id": {"type": "string", "description": "UUID of memory to connect"},
+                            "query": {"type": "string", "description": "Search to find the memory first"},
+                            "max_connections": {"type": "integer", "default": 3, "description": "Max connections (Community: max 3)"},
+                        },
+                    },
+                ),
             ]
 
         @self.server.call_tool()
@@ -182,6 +216,10 @@ class EngramMCPServer:
                 result = await self._handle_recall(**arguments)
             elif name == "memory_forget":
                 result = await self._handle_forget(**arguments)
+            elif name == "memory_consolidate":
+                result = await self._handle_consolidate(**arguments)
+            elif name == "memory_connect":
+                result = await self._handle_connect(**arguments)
             else:
                 raise ValueError(f"Unknown tool: {name}")
 
@@ -260,6 +298,44 @@ class EngramMCPServer:
             return {"success": False, "error": "Provide either memory_id or query"}
         except Exception as e:
             logger.error(f"Forget failed: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def _handle_consolidate(
+        self, threshold: float = 0.95, **_
+    ) -> Dict[str, Any]:
+        try:
+            if not self.engine or not self.engine.consolidator:
+                return {"success": False, "error": "Consolidator not available"}
+            result = await self.engine.consolidator.consolidate(threshold=threshold)
+            return {"success": True, **result}
+        except Exception as e:
+            logger.error(f"Consolidate failed: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def _handle_connect(
+        self, memory_id: Optional[str] = None, query: Optional[str] = None,
+        max_connections: int = 3, **_
+    ) -> Dict[str, Any]:
+        try:
+            if not self.engine or not self.engine.consolidator:
+                return {"success": False, "error": "Consolidator not available"}
+
+            # If query provided, find the memory first
+            if not memory_id and query:
+                results = await self.engine.search(query=query, top_k=1)
+                if not results:
+                    return {"success": False, "error": "No matching memory found"}
+                memory_id = results[0].doc_id
+
+            if not memory_id:
+                return {"success": False, "error": "Provide memory_id or query"}
+
+            result = await self.engine.consolidator.connect(
+                doc_id=memory_id, max_connections=max_connections
+            )
+            return {"success": True, **result}
+        except Exception as e:
+            logger.error(f"Connect failed: {e}")
             return {"success": False, "error": str(e)}
 
 

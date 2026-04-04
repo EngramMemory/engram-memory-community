@@ -95,6 +95,11 @@ class EngramConfig:
     graph_max_entities: int = 500
     graph_spreading_weight: float = 0.15
 
+    # Consolidation (Community: manual-only. Cloud: auto-scheduled.)
+    consolidation_enabled: bool = True
+    duplicate_threshold: float = 0.95
+    max_connections_per_call: int = 3
+
     # Recall behavior
     auto_recall: bool = True
     auto_capture: bool = True
@@ -132,6 +137,8 @@ class RecallEngineHealth:
     avg_hash_candidates: float = 0.0
     graph_node_count: int = 0
     graph_edge_count: int = 0
+    last_consolidation: float = 0.0
+    cluster_count: int = 0
     uptime_seconds: float = 0.0
     errors: List[str] = field(default_factory=list)
 
