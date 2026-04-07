@@ -21,12 +21,17 @@ services:
       retries: 3
 
   fastembed:
-    image: engrammemory/fastembed:1.0.0
+    build:
+      context: ./docker/fastembed
+      dockerfile: Dockerfile
+      args:
+        EMBED_BACKEND: ${EMBED_BACKEND:-fastembed}
     container_name: engram-fastembed
     ports:
       - "11435:8000"
     environment:
       - MODEL_NAME=nomic-ai/nomic-embed-text-v1.5
+      - EMBED_BACKEND=${EMBED_BACKEND:-fastembed}
       - MAX_WORKERS=1
     restart: unless-stopped
     healthcheck:

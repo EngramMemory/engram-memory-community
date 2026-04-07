@@ -229,7 +229,39 @@ class EngramRecallEngine:
             except Exception as e:
                 logger.warning(f"Consolidator init failed: {e}")
 
+        # Ensure Qdrant collection exists (auto-create on first run)
+        await self._ensure_collection()
+
         logger.info("Engram Recall Engine started (Three-Tiered Brain)")
+
+    async def _ensure_collection(self) -> None:
+        """Create the Qdrant collection if it doesn't exist yet."""
+        try:
+            resp = await self._http.get(
+                f"{self.config.qdrant_url}/collections/{self.config.collection}"
+            )
+            if resp.status_code == 200:
+                return  # Collection already exists
+
+            logger.info(f"Creating Qdrant collection '{self.config.collection}'...")
+            create_resp = await self._http.put(
+                f"{self.config.qdrant_url}/collections/{self.config.collection}",
+                json={
+                    "vectors": {
+                        "dense": {
+                            "size": self.config.embedding_dim,
+                            "distance": "Cosine",
+                        }
+                    },
+                    "sparse_vectors": {
+                        "bm25": {}
+                    },
+                },
+            )
+            create_resp.raise_for_status()
+            logger.info(f"Qdrant collection '{self.config.collection}' created")
+        except Exception as e:
+            logger.warning(f"Could not ensure Qdrant collection: {e}")
 
     async def shutdown(self) -> None:
         """Persist state and clean up."""
