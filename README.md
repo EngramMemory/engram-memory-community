@@ -15,9 +15,9 @@
 
 ---
 
-Engram gives your AI agent persistent memory across sessions. Store, search, recall, and forget memories using semantic embeddings — all running on your own hardware with Qdrant and FastEmbed.
+Engram gives your AI agent persistent memory across sessions. Store, search, recall, and forget memories using semantic embeddings — all running on your own hardware. Qdrant, FastEmbed, and the recall engine are bundled into a single Docker container so install is one command.
 
-One repo, two interfaces: an **OpenClaw skill** and a **universal MCP server** that works with Claude Code, Cursor, Windsurf, and VS Code.
+One repo, two interfaces: an **OpenClaw plugin** that fills OpenClaw's memory slot, and a **universal MCP server** that works with Claude Code, Cursor, Windsurf, VS Code, and any other MCP-compatible client.
 
 ---
 
@@ -29,6 +29,8 @@ One repo, two interfaces: an **OpenClaw skill** and a **universal MCP server** t
 | `memory_search` | Semantic similarity search across all stored memories |
 | `memory_recall` | Auto-inject relevant memories into agent context |
 | `memory_forget` | Remove memories by ID or search match |
+| `memory_consolidate` | Find and merge near-duplicate memories (Janitor) |
+| `memory_connect` | Discover cross-category connections between memories (Librarian) |
 
 **Categories:** preference, fact, decision, entity, other — auto-detected from content.
 
@@ -38,12 +40,20 @@ One repo, two interfaces: an **OpenClaw skill** and a **universal MCP server** t
 
 ### 1. Deploy the backend
 
+The fastest path — pull the all-in-one container from Docker Hub:
+
 ```bash
-# Requires Docker
-bash scripts/setup.sh
+docker run -d \
+  --name engram-memory \
+  --restart unless-stopped \
+  -p 6333:6333 -p 11435:11435 -p 8585:8585 \
+  -v engram_data:/data \
+  engrammemory/engram-memory:latest
 ```
 
-This starts Qdrant (vector DB) and FastEmbed (local embedding model) on your machine.
+One container bundles **Qdrant** (vector DB), **FastEmbed** (ONNX embeddings, native ARM64 + x86_64), and the **MCP HTTP server** (the recall engine). Memories persist in the `engram_data` volume.
+
+If you've cloned this repo, `bash scripts/setup.sh` does the same thing plus generates an OpenClaw config and a `docker-compose.yml` you can start/stop with `docker compose`. Set `ENGRAM_BUILD_LOCAL=1` to build from local source instead of pulling.
 
 ### 2. Connect your agent
 
@@ -55,24 +65,31 @@ cd engram-memory-community
 bash scripts/install-plugin.sh
 ```
 
-This installs Engram as a **plugin** (not a skill) and sets it as the memory backend, replacing the built-in SQLite memory with the three-tier recall engine. No API key required — runs fully local with your Qdrant and FastEmbed.
+This installs Engram as a **plugin** (not a skill) and sets it as the memory backend, replacing the built-in SQLite memory with the three-tier recall engine. No API key required — runs fully local against the all-in-one container.
 
-**Claude Code:**
+**Claude Code (no host Python required)** — invoke the bundled stdio MCP server inside the running container:
+```bash
+claude mcp add engrammemory -- docker exec -i -e DATA_DIR=/data/engram engram-memory python /app/mcp_server.py
+```
+
+Or, if you have the repo cloned and Python 3.10+ on the host, you can run the stdio MCP server directly:
 ```bash
 claude mcp add engrammemory -- python mcp/server.py
 ```
 
-**Cursor / Windsurf / VS Code** — add to `.mcp.json`:
+For Cursor / Windsurf / VS Code, add to `.mcp.json`:
 ```json
 {
   "mcpServers": {
     "engrammemory": {
-      "command": "python",
-      "args": ["mcp/server.py"]
+      "command": "docker",
+      "args": ["exec", "-i", "-e", "DATA_DIR=/data/engram", "engram-memory", "python", "/app/mcp_server.py"]
     }
   }
 }
 ```
+
+Direct REST consumers (e.g. the OpenClaw plugin, custom tooling) can hit the HTTP API on port `8585` (`POST /store`, `POST /search`, `POST /forget`, etc).
 
 ### 3. Use it
 
@@ -92,17 +109,21 @@ memory_forget(query="old project requirements")
 ## Architecture
 
 ```
-┌─────────────────┐    ┌──────────────────────────────────────────┐
-│   Your Agent    │    │        Three-Tier Recall Engine          │
-│   (OpenClaw,    │───▶│  Tier 1: Hot Cache   (sub-ms, decay)    │
-│    Claude Code, │    │  Tier 2: Hash Index  (O(1) LSH lookup)  │
-│    Cursor, etc) │    │  Tier 3: Qdrant ANN  (full vector)      │
-└─────────────────┘    └───────────┬──────────────────────────────┘
-                                   │
-                       ┌───────────▼───────────┐
-                       │   FastEmbed (local)    │──▶  Qdrant (local)
-                       └───────────────────────-┘
-              All on your hardware. Nothing leaves your network.
+┌─────────────────┐    ┌─────────────────────────────────────────────────┐
+│   Your Agent    │    │       engrammemory/engram-memory (one image)    │
+│   (OpenClaw,    │───▶│  ┌──────────────────────────────────────────┐  │
+│    Claude Code, │    │  │       Three-Tier Recall Engine           │  │
+│    Cursor,      │    │  │  Tier 1: Hot Cache  (sub-ms, ACT-R)      │  │
+│    Gemini, ...) │    │  │  Tier 2: Hash Index (O(1) LSH lookup)    │  │
+└─────────────────┘    │  │  Tier 3: Qdrant ANN (full hybrid search) │  │
+                       │  │  Graph:  Kuzu spreading activation       │  │
+                       │  └────────────────┬─────────────────────────┘  │
+                       │                   │                            │
+                       │   ┌───────────────┴────────────┐               │
+                       │   │  FastEmbed ONNX  ─▶ Qdrant │               │
+                       │   └────────────────────────────┘               │
+                       └─────────────────────────────────────────────────┘
+              One container. Persistent /data volume. Nothing leaves your network.
 ```
 
 ### Repo Structure
@@ -113,33 +134,39 @@ engram-memory-community/
 │   ├── index.js                Plugin entry — registers tools + auto-recall/capture
 │   ├── openclaw.plugin.json    Plugin manifest (kind: "memory")
 │   └── package.json
-├── plugin.py               ← Python skill fallback for direct tool calls
+├── plugin.py               ← Python entry point for OpenClaw tool calls
 ├── src/
-│   └── recall/             ← Three-tier recall engine
-│       ├── recall_engine.py    Hot → Hash → Vector pipeline
-│       ├── hot_tier.py         Frequency-adjusted decay cache (sub-ms)
+│   └── recall/             ← Three-tier recall engine + graph layer
+│       ├── recall_engine.py    Hot → Hash → Vector pipeline + graph expansion
+│       ├── hot_tier.py         ACT-R activation cache (sub-ms)
 │       ├── multi_head_hasher.py  LSH O(1) candidate retrieval
-│       ├── matryoshka.py       Vector slicing (768→64 dim)
-│       └── models.py          MemoryResult, EngramConfig
-├── skills/
-│   └── openclaw/           ← OpenClaw skill (SKILL.md + plugin)
+│       ├── matryoshka.py       Vector slicing (768 → 256 → 64 dim)
+│       ├── consolidation.py    Janitor (dedup) + Librarian (cross-linking)
+│       ├── graph_layer.py      Kuzu graph for entity tracking
+│       └── models.py           MemoryResult, EngramConfig
 ├── mcp/
-│   └── server.py           ← MCP server (Claude Code, Cursor, Windsurf, VS Code)
-├── scripts/                ← Setup + fallback scripts
-│   ├── memory_store.py
-│   ├── memory_search.py
-│   ├── fastembed_service.py
-│   └── setup.sh
+│   └── server.py           ← Stdio MCP server (Claude Code, Cursor, Windsurf, VS Code)
 ├── docker/
-│   └── fastembed/          ← FastEmbed container (Dockerfile + service)
+│   ├── all-in-one/         ← Single-container image (Qdrant + FastEmbed + MCP)
+│   │   ├── Dockerfile         Multi-stage build with s6-overlay supervisor
+│   │   ├── init.sh            Bootstraps the agent-memory collection on first run
+│   │   └── services.d/        s6 service definitions for each bundled process
+│   ├── fastembed/          ← FastEmbed standalone container (used by all-in-one)
+│   └── mcp/                ← Dockerized HTTP MCP server (entrypoint.py + Dockerfile)
+├── scripts/
+│   ├── setup.sh                Installs the all-in-one container + writes compose file
+│   ├── install-plugin.sh       Installs the OpenClaw plugin
+│   └── ...                     Fallback memory_store / memory_search scripts
 ├── config/
 │   └── docker-compose.yml
-├── docs/                   ← Architecture, examples, integration guides
+├── context/                ← Context system (separate from memory; see SKILL.md)
+├── bin/                    ← CLI tools: engram-context, engram-ask, engram-semantic
+├── docs/                   ← Architecture, integration guides, SOUL rules
 ├── README.md
 └── LICENSE
 ```
 
-The OpenClaw skill and the MCP server both route through `plugin.py`, which uses the three-tier recall engine for every store and search operation.
+The OpenClaw plugin routes through `plugin.py`, which uses the three-tier recall engine. The stdio MCP server (`mcp/server.py`) and the dockerized HTTP MCP server (`docker/mcp/entrypoint.py`) both wrap the same `EngramRecallEngine` from `src/recall/`.
 
 ---
 
@@ -203,10 +230,13 @@ With a key, your memories still live in your Qdrant. Engram Cloud handles embedd
 
 ## Requirements
 
+- Docker (the all-in-one container is the only required runtime)
+- 4 GB+ RAM
+- 10 GB+ storage for the persistent volume
+
+Optional, only if you want to run the stdio MCP server, the OpenClaw plugin in fallback mode, or the `engram-context` / `engram-ask` CLI tools directly on the host:
+
 - Python 3.10+
-- Docker (for Qdrant + FastEmbed)
-- 4GB+ RAM
-- 10GB+ storage
 
 ---
 
@@ -214,13 +244,13 @@ With a key, your memories still live in your Qdrant. Engram Cloud handles embedd
 
 Engram is local-only. No data leaves your machine.
 
-- **Memory tools** store and search vectors in your local Qdrant instance
-- **Embeddings** are generated by FastEmbed running in a local Docker container
+- **Memory tools** store and search vectors in the Qdrant instance bundled inside the container
+- **Embeddings** are generated by FastEmbed (ONNX, native ARM64 + x86_64) running in the same container
 - **Context system** only reads `.md` files inside your project's `.context/` directory — never arbitrary project files
 - **Auto-recall/auto-capture** (when enabled) operate within the OpenClaw agent lifecycle — memories stay in your local Qdrant
 - **No telemetry, no phone-home, no external API calls**
 
-The Docker image `engrammemory/fastembed` is built from `docker/fastembed/Dockerfile` in this repo. You can verify or rebuild it yourself.
+The Docker image `engrammemory/engram-memory` is built from `docker/all-in-one/Dockerfile` in this repo. You can verify or rebuild it yourself with `docker build -f docker/all-in-one/Dockerfile -t engrammemory/engram-memory:local .`.
 
 ---
 
