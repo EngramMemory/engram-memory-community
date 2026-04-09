@@ -65,13 +65,20 @@ cd "$SETUP_DIR"
 echo ""
 echo -e "${BLUE}Generating docker-compose.yml...${NC}"
 
-cat > docker-compose.yml << EOF
-# Engram Memory — single all-in-one container
-#
-# Bundles Qdrant + FastEmbed + MCP HTTP server in one image. Same product
-# as the previous 3-service setup, just packaged as one image. All ports
-# are exposed on the host for backward compatibility with any existing
-# clients (OpenClaw plugin, REST consumers, MCP clients).
+# Decide whether to pull the published image or build from source.
+# Default: pull from Docker Hub (works for everyone, no clone required).
+# Fallback: build from local source (for air-gapped or modified setups).
+ENGRAM_IMAGE="engrammemory/engram-memory:latest"
+USE_LOCAL_BUILD=false
+
+if [ -f "$ENGRAM_REPO_DIR/docker/all-in-one/Dockerfile" ] && [ "${ENGRAM_BUILD_LOCAL:-0}" = "1" ]; then
+    echo "  ENGRAM_BUILD_LOCAL=1 set — building from local source"
+    USE_LOCAL_BUILD=true
+fi
+
+if [ "$USE_LOCAL_BUILD" = true ]; then
+    cat > docker-compose.yml << EOF
+# Engram Memory — single all-in-one container (built from local source)
 services:
   engram:
     build:
@@ -110,6 +117,53 @@ volumes:
   engram_data:
     driver: local
 EOF
+else
+    cat > docker-compose.yml << EOF
+# Engram Memory — single all-in-one container (pulled from Docker Hub)
+#
+# Bundles Qdrant + FastEmbed + MCP HTTP server in one image. Same product
+# as the previous 3-service setup, packaged as one image. All ports are
+# exposed on the host for backward compatibility with any existing clients
+# (OpenClaw plugin, REST consumers, MCP clients).
+#
+# To build from local source instead of pulling, run setup.sh with
+# ENGRAM_BUILD_LOCAL=1 in the environment.
+services:
+  engram:
+    image: ${ENGRAM_IMAGE}
+    container_name: engram-memory
+    restart: unless-stopped
+    ports:
+      - "6333:6333"   # Qdrant HTTP
+      - "6334:6334"   # Qdrant gRPC
+      - "11435:11435" # FastEmbed
+      - "8585:8585"   # MCP HTTP server
+    volumes:
+      - engram_data:/data
+    environment:
+      - QDRANT_URL=http://localhost:6333
+      - FASTEMBED_URL=http://localhost:11435
+      - COLLECTION_NAME=agent-memory
+      - DATA_DIR=/data/engram
+      - MODEL_NAME=nomic-ai/nomic-embed-text-v1.5
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8585/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+        reservations:
+          memory: 1G
+
+volumes:
+  engram_data:
+    driver: local
+EOF
+fi
 
 echo -e "${GREEN}docker-compose.yml created${NC}"
 
