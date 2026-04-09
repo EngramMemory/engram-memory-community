@@ -67,12 +67,19 @@ bash scripts/install-plugin.sh
 
 This installs Engram as a **plugin** (not a skill) and sets it as the memory backend, replacing the built-in SQLite memory with the three-tier recall engine. No API key required — runs fully local against the all-in-one container.
 
-**Claude Code** — point Claude at the container's MCP HTTP transport (no host Python required):
+**Claude Code** — native MCP HTTP transport (no Node, no host Python):
 ```bash
 claude mcp add engrammemory --transport http http://localhost:8585/mcp
 ```
 
-For Cursor / Windsurf / VS Code, add to `.mcp.json`:
+**Cursor, Windsurf, VS Code, Claude Desktop, Cline, Zed, Gemini CLI, Codex, and 7 other clients** — use the universal [`install-mcp`](https://www.npmjs.com/package/install-mcp) helper. It detects your client and writes the right config file for you:
+```bash
+npx -y install-mcp@latest http://localhost:8585/mcp \
+    --client <your-client> --name engrammemory --oauth=no -y
+```
+Replace `<your-client>` with one of: `claude-code, cursor, windsurf, vscode, claude, cline, roo-cline, zed, gemini-cli, codex, goose, witsy, enconvo, warp, opencode`.
+
+If your client doesn't have a CLI helper, add this to its `.mcp.json` (or equivalent) directly:
 ```json
 {
   "mcpServers": {
@@ -88,12 +95,12 @@ The container exposes four MCP entry points off the same recall engine — pick 
 
 | Transport | Endpoint | When to use |
 |---|---|---|
-| Streamable HTTP | `POST/GET http://localhost:8585/mcp` | Modern MCP clients (Claude Code `--transport http`) |
+| Streamable HTTP | `POST/GET http://localhost:8585/mcp` | Modern MCP clients (Claude Code `--transport http`, etc.) |
 | SSE (legacy) | `GET http://localhost:8585/sse` + `POST /messages/` | Older MCP clients that haven't moved to streamable-http |
 | Stdio | `docker exec -i engram-memory python /app/mcp_server.py` | When you want a process-per-session model |
 | REST | `POST http://localhost:8585/{store,search,recall,forget,consolidate,connect}` | OpenClaw plugin, custom tooling, raw curl |
 
-Or, if you have the repo cloned and Python 3.10+ on the host, you can run the stdio MCP server directly without going through the container:
+If you have the repo cloned and Python 3.10+ on the host, you can also run the stdio MCP server directly without going through the container:
 ```bash
 claude mcp add engrammemory -- python mcp/server.py
 ```
