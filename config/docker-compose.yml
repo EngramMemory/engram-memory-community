@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   qdrant:
     image: qdrant/qdrant:v1.11.3
@@ -15,14 +13,16 @@ services:
       - QDRANT__SERVICE__GRPC_PORT=6334
       - QDRANT__LOG_LEVEL=INFO
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
 
   fastembed:
-    image: engrammemory/fastembed:1.0.0
+    build:
+      context: ../docker/fastembed
+      dockerfile: Dockerfile
     container_name: fastembed-memory
     restart: unless-stopped
     ports:
@@ -39,9 +39,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 4G
-        reservations:
           memory: 2G
+        reservations:
+          memory: 512M
 
 volumes:
   qdrant_storage:

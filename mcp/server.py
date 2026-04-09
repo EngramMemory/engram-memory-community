@@ -346,6 +346,8 @@ async def main():
     parser.add_argument("--qdrant-url", default=os.getenv("QDRANT_URL", "http://localhost:6333"))
     parser.add_argument("--fastembed-url", default=os.getenv("FASTEMBED_URL", "http://localhost:11435"))
     parser.add_argument("--collection", default=os.getenv("COLLECTION_NAME", "agent-memory"))
+    parser.add_argument("--data-dir", default=os.getenv("DATA_DIR", ".engram"),
+                        help="Directory for hot-tier, hash index, and graph persistence")
 
     args = parser.parse_args()
 
@@ -353,6 +355,7 @@ async def main():
         qdrant_url=args.qdrant_url,
         embedding_url=args.fastembed_url,
         collection=args.collection,
+        data_dir=args.data_dir,
         debug=os.getenv("DEBUG", "").lower() in ["true", "1"],
     )
 

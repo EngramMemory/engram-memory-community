@@ -1,117 +1,82 @@
 #!/usr/bin/env python3
 """
 FastEmbed HTTP service for Engram Memory
-Provides lightweight embedding generation for memory storage
+Provides lightweight ONNX-based embedding generation for memory storage.
+
+Uses fastembed 0.7.x with ONNX Runtime — native support for both x86_64 and ARM64/Apple Silicon.
 """
 
 import os
-import sys
-from pathlib import Path
 import logging
 from typing import List, Dict, Any
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastembed import TextEmbedding
-import numpy as np
 
-# Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class FastEmbedService:
-    def __init__(self, model_name: str = None):
-        """Initialize FastEmbed service with specified model"""
-        self.model_name = model_name or os.getenv("MODEL_NAME", "nomic-ai/nomic-embed-text-v1.5")
-        self.embedding_model = None
-        self._initialize_model()
-    
-    def _initialize_model(self):
-        """Initialize the embedding model"""
-        try:
-            logger.info(f"Loading FastEmbed model: {self.model_name}")
-            self.embedding_model = TextEmbedding(
-                model_name=self.model_name,
-                max_length=512
-            )
-            logger.info("FastEmbed model loaded successfully")
-        except Exception as e:
-            logger.error(f"Failed to load FastEmbed model: {e}")
-            raise
-    
-    def generate_embeddings(self, texts: List[str], prefix: str = None) -> List[List[float]]:
-        """Generate embeddings for list of texts with optional task prefix.
+MODEL_NAME = os.getenv("MODEL_NAME", "nomic-ai/nomic-embed-text-v1.5")
 
-        nomic-embed-text-v1.5 uses task-specific prefixes for best results:
-          - "search_document: " for texts being stored/indexed
-          - "search_query: " for search queries
-        Without prefixes, query-document similarity drops significantly.
-        """
-        try:
-            if prefix:
-                texts = [f"{prefix}{t}" for t in texts]
-            embeddings = list(self.embedding_model.embed(texts))
-            return [embedding.tolist() for embedding in embeddings]
-        except Exception as e:
-            logger.error(f"Failed to generate embeddings: {e}")
-            raise
+logger.info(f"Loading FastEmbed model: {MODEL_NAME}")
+model = TextEmbedding(model_name=MODEL_NAME, max_length=512)
+logger.info("FastEmbed model loaded successfully")
 
-# Initialize FastEmbed service
-service = FastEmbedService()
-app = FastAPI(title="FastEmbed Service", version="1.0.0")
+app = FastAPI(title="FastEmbed Service", version="2.0.0")
 
-# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for testing
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
-    return {"status": "healthy", "model": service.model_name}
+    return {"status": "healthy", "model": MODEL_NAME}
+
 
 @app.post("/embeddings")
 async def generate_embeddings(request: Dict[str, Any]):
-    """Generate embeddings for input texts"""
     try:
         texts = request.get("texts", [])
         if not texts:
             raise HTTPException(status_code=400, detail="No texts provided")
-
         if not isinstance(texts, list):
             texts = [texts]
 
         # Task prefix for nomic-embed-text-v1.5
-        # "document" → "search_document: ", "query" → "search_query: "
         embed_type = request.get("type", None)
         prefix_map = {"document": "search_document: ", "query": "search_query: "}
         prefix = prefix_map.get(embed_type)
 
-        embeddings = service.generate_embeddings(texts, prefix=prefix)
-        
+        if prefix:
+            texts = [f"{prefix}{t}" for t in texts]
+
+        embeddings = [e.tolist() for e in model.embed(texts)]
+
         return {
             "embeddings": embeddings,
-            "model": service.model_name,
+            "model": MODEL_NAME,
             "dimension": len(embeddings[0]) if embeddings else 0,
-            "count": len(embeddings)
+            "count": len(embeddings),
         }
-    
     except Exception as e:
         logger.error(f"Embedding generation failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.get("/")
 async def root():
-    """Root endpoint"""
     return {
         "service": "FastEmbed Engram Memory",
-        "model": service.model_name,
-        "endpoints": ["/health", "/embeddings"]
+        "model": MODEL_NAME,
+        "endpoints": ["/health", "/embeddings"],
     }
+
 
 if __name__ == "__main__":
     logger.info("Starting FastEmbed service on localhost:8000")

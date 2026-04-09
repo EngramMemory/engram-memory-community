@@ -41,9 +41,33 @@ app = FastAPI(title="Engram Memory MCP Server", version="2.0.0")
 engine = None
 
 
+async def _wait_for_service(name: str, url: str, timeout: int = 120):
+    """Block until a dependency is healthy. Runs at startup so the user never
+    hits a half-initialized system."""
+    import httpx
+    deadline = asyncio.get_event_loop().time() + timeout
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        while asyncio.get_event_loop().time() < deadline:
+            try:
+                resp = await client.get(url)
+                if resp.status_code == 200:
+                    logger.info(f"{name} is ready")
+                    return
+            except Exception:
+                pass
+            logger.info(f"Waiting for {name} at {url}...")
+            await asyncio.sleep(2)
+    raise RuntimeError(f"{name} not reachable at {url} after {timeout}s")
+
+
 @app.on_event("startup")
 async def startup():
     global engine
+    # Wait for dependencies before initializing — the user should never
+    # experience partial startup or silent failures.
+    await _wait_for_service("Qdrant", f"{QDRANT_URL}/healthz")
+    await _wait_for_service("FastEmbed", f"{FASTEMBED_URL}/health")
+
     config = EngramConfig(
         qdrant_url=QDRANT_URL,
         embedding_url=FASTEMBED_URL,

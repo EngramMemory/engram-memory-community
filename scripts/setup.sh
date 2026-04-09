@@ -83,14 +83,16 @@ services:
       - QDRANT__SERVICE__GRPC_PORT=6334
       - QDRANT__LOG_LEVEL=INFO
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
 
   fastembed:
-    image: engrammemory/fastembed:1.0.0
+    build:
+      context: ${ENGRAM_REPO_DIR}/docker/fastembed
+      dockerfile: Dockerfile
     container_name: engram-fastembed
     restart: unless-stopped
     ports:
@@ -107,9 +109,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 4G
-        reservations:
           memory: 2G
+        reservations:
+          memory: 512M
 
   mcp-server:
     build:
@@ -176,7 +178,7 @@ wait_for_service() {
     echo -e " ${GREEN}OK${NC}"
 }
 
-wait_for_service "qdrant" "http://localhost:6333/health"
+wait_for_service "qdrant" "http://localhost:6333/healthz"
 wait_for_service "fastembed" "http://localhost:11435/health"
 wait_for_service "mcp-server" "http://localhost:8585/health"
 
