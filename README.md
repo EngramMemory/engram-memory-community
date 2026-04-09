@@ -272,7 +272,7 @@ The Docker image `engrammemory/engram-memory` is built from `docker/all-in-one/D
 
 Need deduplication, compression, lifecycle management, multi-agent isolation, or analytics? [Engram Cloud](https://engrammemory.ai) adds enterprise intelligence on top of your self-hosted storage.
 
-Your Qdrant stays yours. Engram Cloud processes in transit and stores nothing.
+Your Memory stays yours. Engram Cloud processes in transit and stores nothing.
 
 **SDKs:**
 - Python: `pip install engrammemory-ai` — [PyPI](https://pypi.org/project/engrammemory-ai/)
