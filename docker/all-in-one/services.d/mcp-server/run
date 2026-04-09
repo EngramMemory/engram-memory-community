@@ -1,0 +1,3 @@
+#!/command/with-contenv sh
+cd /app
+exec python /app/mcp_entrypoint.py 2>&1

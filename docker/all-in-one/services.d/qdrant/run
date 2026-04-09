@@ -1,0 +1,3 @@
+#!/command/with-contenv sh
+cd /
+exec /usr/local/bin/qdrant --config-path /etc/qdrant/config.yaml --uri http://localhost:6333 2>&1

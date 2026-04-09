@@ -65,83 +65,49 @@ cd "$SETUP_DIR"
 echo ""
 echo -e "${BLUE}Generating docker-compose.yml...${NC}"
 
-cat > docker-compose.yml << 'EOF'
-version: '3.8'
-
+cat > docker-compose.yml << EOF
+# Engram Memory — single all-in-one container
+#
+# Bundles Qdrant + FastEmbed + MCP HTTP server in one image. Same product
+# as the previous 3-service setup, just packaged as one image. All ports
+# are exposed on the host for backward compatibility with any existing
+# clients (OpenClaw plugin, REST consumers, MCP clients).
 services:
-  qdrant:
-    image: qdrant/qdrant:v1.17.0
-    container_name: qdrant-memory
-    restart: unless-stopped
-    ports:
-      - "6333:6333"
-      - "6334:6334"
-    volumes:
-      - qdrant_storage:/qdrant/storage
-    environment:
-      - QDRANT__SERVICE__HTTP_PORT=6333
-      - QDRANT__SERVICE__GRPC_PORT=6334
-      - QDRANT__LOG_LEVEL=INFO
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-  fastembed:
-    build:
-      context: ${ENGRAM_REPO_DIR}/docker/fastembed
-      dockerfile: Dockerfile
-    container_name: engram-fastembed
-    restart: unless-stopped
-    ports:
-      - "11435:8000"
-    environment:
-      - MODEL_NAME=nomic-ai/nomic-embed-text-v1.5
-      - MAX_WORKERS=1
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    deploy:
-      resources:
-        limits:
-          memory: 2G
-        reservations:
-          memory: 512M
-
-  mcp-server:
+  engram:
     build:
       context: ${ENGRAM_REPO_DIR}
-      dockerfile: docker/mcp/Dockerfile
-    container_name: engram-mcp
+      dockerfile: docker/all-in-one/Dockerfile
+    image: engrammemory/engram-memory:latest
+    container_name: engram-memory
     restart: unless-stopped
     ports:
-      - "8585:8585"
-    environment:
-      - QDRANT_URL=http://qdrant:6333
-      - FASTEMBED_URL=http://fastembed:8000
-      - COLLECTION_NAME=agent-memory
-      - DATA_DIR=/app/data
+      - "6333:6333"   # Qdrant HTTP
+      - "6334:6334"   # Qdrant gRPC
+      - "11435:11435" # FastEmbed
+      - "8585:8585"   # MCP HTTP server
     volumes:
-      - mcp_data:/app/data
-    depends_on:
-      - qdrant
-      - fastembed
+      - engram_data:/data
+    environment:
+      - QDRANT_URL=http://localhost:6333
+      - FASTEMBED_URL=http://localhost:11435
+      - COLLECTION_NAME=agent-memory
+      - DATA_DIR=/data/engram
+      - MODEL_NAME=nomic-ai/nomic-embed-text-v1.5
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8585/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 120s
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+        reservations:
+          memory: 1G
 
 volumes:
-  qdrant_storage:
-    driver: local
-  mcp_data:
+  engram_data:
     driver: local
 EOF
 
@@ -178,8 +144,8 @@ wait_for_service() {
     echo -e " ${GREEN}OK${NC}"
 }
 
-wait_for_service "qdrant" "http://localhost:6333/healthz"
-wait_for_service "fastembed" "http://localhost:11435/health"
+wait_for_service "qdrant"     "http://localhost:6333/healthz"
+wait_for_service "fastembed"  "http://localhost:11435/health"
 wait_for_service "mcp-server" "http://localhost:8585/health"
 
 # Test the embedding API
@@ -197,32 +163,20 @@ else
     exit 1
 fi
 
-# Create Qdrant collection with scalar quantization
+# Verify the agent-memory collection (the all-in-one container creates it
+# automatically on first start; this just confirms it landed correctly).
 echo ""
-echo -e "${BLUE}Creating Qdrant collection with scalar quantization...${NC}"
-collection_response=$(curl -s -X PUT http://localhost:6333/collections/agent-memory \
-    -H "Content-Type: application/json" \
-    -d '{
-        "vectors": {
-            "dense": {
-                "size": 768,
-                "distance": "Cosine"
-            }
-        },
-        "sparse_vectors": {
-            "bm25": {}
-        },
-        "optimizers_config": {
-            "default_segment_number": 2
-        },
-        "replication_factor": 1
-    }')
-
-if echo "$collection_response" | grep -q '"result":true'; then
-    echo -e "${GREEN}Collection 'agent-memory' created${NC}"
-else
-    echo -e "${YELLOW}Collection might already exist${NC}"
-fi
+echo -e "${BLUE}Verifying Qdrant collection...${NC}"
+for i in $(seq 1 30); do
+    if curl -sf http://localhost:6333/collections/agent-memory >/dev/null 2>&1; then
+        echo -e "${GREEN}Collection 'agent-memory' ready${NC}"
+        break
+    fi
+    sleep 1
+    if [ "$i" -eq 30 ]; then
+        echo -e "${YELLOW}Collection not yet present — will be created on first store${NC}"
+    fi
+done
 
 # Detect network setup
 if docker network ls | grep -q "bridge"; then
