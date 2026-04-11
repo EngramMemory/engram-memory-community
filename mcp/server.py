@@ -356,6 +356,8 @@ async def main():
         embedding_url=args.fastembed_url,
         collection=args.collection,
         data_dir=args.data_dir,
+        api_key=os.getenv("ENGRAM_API_KEY", ""),
+        api_url=os.getenv("ENGRAM_API_URL", "https://api.engrammemory.ai"),
         debug=os.getenv("DEBUG", "").lower() in ["true", "1"],
     )
 

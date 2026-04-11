@@ -52,6 +52,8 @@ QDRANT_URL = os.getenv("QDRANT_URL", "http://host.docker.internal:6333")
 FASTEMBED_URL = os.getenv("FASTEMBED_URL", "http://host.docker.internal:11435")
 COLLECTION = os.getenv("COLLECTION_NAME", "agent-memory")
 DATA_DIR = os.getenv("DATA_DIR", "/app/data")
+API_KEY = os.getenv("ENGRAM_API_KEY", "")
+API_URL = os.getenv("ENGRAM_API_URL", "https://api.engrammemory.ai")
 
 # Build the MCP server up front (no I/O in __init__) so the streamable-http
 # session manager can hold a reference to its underlying Server instance.
@@ -60,6 +62,8 @@ config = EngramConfig(
     embedding_url=FASTEMBED_URL,
     collection=COLLECTION,
     data_dir=DATA_DIR,
+    api_key=API_KEY,
+    api_url=API_URL,
 )
 mcp_server = EngramMCPServer(config)
 

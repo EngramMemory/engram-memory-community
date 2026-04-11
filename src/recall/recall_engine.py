@@ -325,6 +325,59 @@ class EngramRecallEngine:
 
         return vec
 
+    # --- Engram Cloud (optional extension layer) ---
+
+    @property
+    def _cloud_enabled(self) -> bool:
+        return bool(self.config.api_key)
+
+    async def _cloud_intelligence(self, text: str) -> Dict:
+        """Call Engram Cloud /v1/intelligence for compression, dedup, and
+        category detection. Returns empty dict on failure so local processing
+        is never blocked by cloud issues."""
+        if not self._cloud_enabled:
+            return {}
+        try:
+            response = await self._http.post(
+                f"{self.config.api_url}/v1/intelligence",
+                json={"text": text, "compress": True},
+                headers={
+                    "Authorization": f"Bearer {self.config.api_key}",
+                    "X-SDK-Version": "recall-engine/2.0",
+                },
+                timeout=10.0,
+            )
+            if response.status_code == 200:
+                return response.json()
+            logger.debug(f"Cloud intelligence returned {response.status_code}")
+        except Exception as e:
+            logger.debug(f"Cloud intelligence failed (local unaffected): {e}")
+        return {}
+
+    async def _cloud_overflow_search(
+        self, vector: np.ndarray, limit: int
+    ) -> List:
+        """Search Engram Cloud overflow storage for memories that exceeded
+        local retention. Returns empty list on failure."""
+        if not self._cloud_enabled:
+            return []
+        try:
+            response = await self._http.post(
+                f"{self.config.api_url}/v1/overflow/search",
+                json={"vector": vector.tolist(), "limit": limit},
+                headers={
+                    "Authorization": f"Bearer {self.config.api_key}",
+                    "X-SDK-Version": "recall-engine/2.0",
+                },
+                timeout=10.0,
+            )
+            if response.status_code == 200:
+                data = response.json()
+                return data.get("results", [])
+        except Exception as e:
+            logger.debug(f"Cloud overflow search failed (local unaffected): {e}")
+        return []
+
     # --- Store ---
 
     async def store(
@@ -360,8 +413,19 @@ class EngramRecallEngine:
         if doc_id is None:
             doc_id = str(uuid.uuid4())
 
-        # Embed (document prefix for storage)
+        # Embed (document prefix for storage) — always local, always fast
         vector = await self._embed(content, type="document")
+
+        # Cloud extension: compression, dedup, category detection
+        # Runs in parallel with local processing, never blocks on failure
+        cloud = await self._cloud_intelligence(content)
+        if cloud.get("dedup", {}).get("is_duplicate"):
+            logger.debug(f"Cloud dedup: skipping duplicate (similarity {cloud['dedup'].get('similarity', '?')})")
+            return doc_id  # return ID but don't write — caller sees success
+
+        # If cloud provided a better category and caller used default, use it
+        if cloud.get("category") and category == "other":
+            category = cloud["category"]
 
         # Generate sparse vector for hybrid search
         sparse = text_to_sparse_vector(content, boost_specifics=True)
@@ -375,6 +439,15 @@ class EngramRecallEngine:
             "access_count": 0,
             **(metadata or {}),
         }
+
+        # Attach cloud metadata to payload if available
+        if cloud:
+            if cloud.get("compressed_vector"):
+                payload["compressed_vector_dim"] = len(cloud["compressed_vector"])
+            if cloud.get("compression_ratio"):
+                payload["compression_ratio"] = cloud["compression_ratio"]
+            if cloud.get("quality_score"):
+                payload["quality_score"] = cloud["quality_score"]
 
         await self._http.put(
             f"{self.config.qdrant_url}/collections/{self.config.collection}/points",
@@ -559,6 +632,30 @@ class EngramRecallEngine:
                         seen_ids.add(r.doc_id)
             except Exception as e:
                 logger.debug(f"Graph expansion failed: {e}")
+
+        # ── Cloud overflow: extend local results with cloud storage ──
+        # Only runs when API key is set AND local results are insufficient.
+        # Cloud overflow memories are ones that exceeded local retention or
+        # were archived. They get tagged with tier="overflow".
+        if self._cloud_enabled and len(results) < top_k:
+            try:
+                overflow = await self._cloud_overflow_search(
+                    query_vector, top_k - len(results)
+                )
+                for mem in overflow:
+                    mid = str(mem.get("id", ""))
+                    if mid in seen_ids:
+                        continue
+                    results.append(MemoryResult(
+                        doc_id=mid,
+                        content=mem.get("content", mem.get("text", "")),
+                        score=float(mem.get("score", 0)),
+                        tier="overflow",
+                        category=mem.get("category", "other"),
+                    ))
+                    seen_ids.add(mid)
+            except Exception as e:
+                logger.debug(f"Cloud overflow search failed (local unaffected): {e}")
 
         # Final sort by score, take top_k
         results.sort(key=lambda r: r.score, reverse=True)
