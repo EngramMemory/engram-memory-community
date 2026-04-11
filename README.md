@@ -15,32 +15,92 @@
 
 ---
 
-Engram gives your AI agent persistent memory across sessions. Store, search, recall, and forget memories using semantic embeddings — all running on your own hardware. Qdrant, FastEmbed, and the recall engine are bundled into a single Docker container so install is one command.
+Engram gives your AI agent persistent memory across sessions. Store, search, recall, and forget memories using semantic embeddings — all running on your own hardware. No API keys, no cloud dependencies, no data leaving your machine.
 
-One repo, two interfaces: an **OpenClaw plugin** that fills OpenClaw's memory slot, and a **universal MCP server** that works with Claude Code, Cursor, Windsurf, VS Code, and any other MCP-compatible client.
+One container bundles **Qdrant**, **FastEmbed**, and the **MCP server**. One command to install. Works with Claude Code, Cursor, Windsurf, VS Code, OpenClaw, or anything else that speaks MCP.
+
+---
+
+## The Problem
+
+Every AI agent on the market forgets everything when the session ends. You spend 30 minutes explaining your codebase, your preferences, your architectural decisions. You close the tab. Tomorrow you start over.
+
+The current solutions are all bad in different ways. OpenAI's memory is a black box you don't control. Mem0 and Zep charge $19–$249/month for managed cloud memory — your data goes through their servers. Local alternatives (LangChain memory, SQLite stores) don't scale past a few thousand memories and treat every memory equally regardless of how often you access it.
+
+Engram exists because there should be a third option: a serious memory system that runs on your own hardware, costs nothing, and gets faster the more you use it.
+
+---
+
+## How It Works
+
+### The Three-Tiered Brain
+
+Most memory systems do one thing: vector search across everything. That's slow at scale and wasteful for queries you've made before. Engram has three tiers, and a query flows through them in order:
+
+**Tier 1 — Hot-Tier Cache (sub-millisecond lookup)**
+The memories you access most often live in an in-memory frequency cache. Each memory has an activation strength that grows with every access and decays exponentially with time — based on the ACT-R cognitive architecture from memory science. When you query, the hot tier checks first. If your query matches a cached memory above the similarity threshold, the tier lookup completes in under a millisecond. No vector search. No disk read.
+
+**Tier 2 — Multi-Head Hash Index (O(1) candidate retrieval)**
+If the hot tier misses, the query hits a Locality Sensitive Hashing index. Engram takes the first 64 dimensions of the query embedding (using Matryoshka representation learning from the nomic-embed-text-v1.5 model), runs them through 4 independent hash functions, and looks up candidates in 4 hash buckets simultaneously. This returns a small candidate set in O(1) time. The multi-head design eliminates the false-positive problem that single-hash LSH is known for.
+
+**Tier 3 — Hybrid Vector Search (semantic depth)**
+The candidates get re-ranked using full 768-dimensional cosine similarity in Qdrant, combined with BM25 sparse vector search via Reciprocal Rank Fusion. This is the deep semantic search — but it runs on the candidate set from Tier 2, not your entire memory store. Top results get promoted into the hot tier so the next similar query is even faster.
+
+### What this means in practice
+
+The embedding step (generating a vector from your query text) takes ~25ms on Apple Silicon via ONNX. That's the floor for every query. On top of that:
+
+- Repeat query (hot tier hit): **~25ms** total — the tier lookup is sub-ms, embedding dominates
+- Similar query (hash + re-rank): **~30ms** total
+- Novel query through full MCP pipeline (all tiers + graph expansion): **~190ms**
+
+The more you use it, the more queries hit the fast path. That's the design.
+
+### Community Edition Caps
+
+Engram Community is a real product with deliberate limits:
+
+| Feature | Community | Cloud |
+|---|---|---|
+| Hot-tier cache | 1,000 entries max | Unlimited |
+| Hash index heads | 4 | 8+ with auto-tuning |
+| Hash bit size | 12-bit (4,096 buckets) | 16-bit+ adaptive |
+| Entity graph | 500 entities, 1-hop | Unlimited, multi-hop |
+| Consolidation (dedup) | Manual, fixed 0.95 threshold | Auto-scheduled, tunable |
+| Cross-category linking | 3 connections per call | Unlimited |
+| ACT-R timestamps | 50 per memory | Unlimited |
+| TurboQuant compression | — | ~6x storage reduction |
+| Auto category detection | — | LLM-powered |
+| Overflow storage | — | Cloud-backed spillover |
+| Fleet coordination | — | Multi-agent isolation |
+| Analytics dashboard | — | Usage, recall rates, health |
+
+These caps are real. They exist because [Engram Cloud](https://engrammemory.ai) is how the project gets funded. Community is genuinely useful by itself — it just doesn't have the features that matter at scale.
 
 ---
 
 ## What You Get
 
+Six tools exposed through MCP:
+
 | Tool | What it does |
 |---|---|
-| `memory_store` | Save a memory with semantic embedding and auto-classification |
-| `memory_search` | Semantic similarity search across all stored memories |
+| `memory_store` | Save a memory with semantic embedding |
+| `memory_search` | Three-tier recall search across all stored memories |
 | `memory_recall` | Auto-inject relevant memories into agent context |
 | `memory_forget` | Remove memories by ID or search match |
-| `memory_consolidate` | Find and merge near-duplicate memories (Janitor) |
-| `memory_connect` | Discover cross-category connections between memories (Librarian) |
+| `memory_consolidate` | Find and merge near-duplicate memories (manual, 0.95 threshold) |
+| `memory_connect` | Discover cross-category connections (max 3 per call) |
 
-**Categories:** preference, fact, decision, entity, other — auto-detected from content.
+**Categories:** preference, fact, decision, entity, other.
+
+The recall engine also includes a Kuzu-backed entity graph (capped at 500 entities, 1-hop traversal in Community) that tracks co-retrieval patterns and does spreading activation across related memories.
 
 ---
 
 ## Quick Start
 
-### 1. Deploy the backend
-
-The fastest path — pull the all-in-one container from Docker Hub:
+### 1. Start the container
 
 ```bash
 docker run -d \
@@ -51,36 +111,30 @@ docker run -d \
   engrammemory/engram-memory:latest
 ```
 
-One container bundles **Qdrant** (vector DB), **FastEmbed** (ONNX embeddings, native ARM64 + x86_64), and the **MCP HTTP server** (the recall engine). Memories persist in the `engram_data` volume.
+One container. Qdrant, FastEmbed (ONNX, native ARM64 + x86_64), and the MCP server all bundled inside, supervised by s6-overlay. Memories persist in the `engram_data` volume across restarts.
 
-If you've cloned this repo, `bash scripts/setup.sh` does the same thing plus generates an OpenClaw config and a `docker-compose.yml` you can start/stop with `docker compose`. Set `ENGRAM_BUILD_LOCAL=1` to build from local source instead of pulling.
+If you've cloned the repo, `bash scripts/setup.sh` does the same thing plus auto-registers the MCP with Claude Code and generates an OpenClaw config.
 
 ### 2. Connect your agent
 
-**OpenClaw (replaces default memory system):**
-```bash
-# Clone and install the plugin
-git clone https://github.com/EngramMemory/engram-memory-community.git
-cd engram-memory-community
-bash scripts/install-plugin.sh
-```
-
-This installs Engram as a **plugin** (not a skill) and sets it as the memory backend, replacing the built-in SQLite memory with the three-tier recall engine. No API key required — runs fully local against the all-in-one container.
-
-**Claude Code** — native MCP HTTP transport (no Node, no host Python):
+**Claude Code:**
 ```bash
 claude mcp add engrammemory -s user --transport http http://localhost:8585/mcp
 ```
-The `-s user` flag makes Engram available across all your projects, not just the current directory.
 
-**Cursor, Windsurf, VS Code, Claude Desktop, Cline, Zed, Gemini CLI, Codex, and 7 other clients** — use the universal [`install-mcp`](https://www.npmjs.com/package/install-mcp) helper. It detects your client and writes the right config file for you:
+**Cursor, Windsurf, VS Code, Claude Desktop, Cline, Zed, and 9 other clients** — one command via [`install-mcp`](https://www.npmjs.com/package/install-mcp):
 ```bash
 npx -y install-mcp@latest http://localhost:8585/mcp \
     --client <your-client> --name engrammemory --oauth=no -y
 ```
-Replace `<your-client>` with one of: `claude-code, cursor, windsurf, vscode, claude, cline, roo-cline, zed, gemini-cli, codex, goose, witsy, enconvo, warp, opencode`.
 
-If your client doesn't have a CLI helper, add this to its `.mcp.json` (or equivalent) directly:
+**OpenClaw:**
+```bash
+git clone https://github.com/EngramMemory/engram-memory-community.git
+cd engram-memory-community && bash scripts/install-plugin.sh
+```
+
+**Manual (any client)** — add to `.mcp.json`:
 ```json
 {
   "mcpServers": {
@@ -92,32 +146,24 @@ If your client doesn't have a CLI helper, add this to its `.mcp.json` (or equiva
 }
 ```
 
-The container exposes four MCP entry points off the same recall engine — pick whichever your client supports:
+The container exposes four transports off the same recall engine:
 
-| Transport | Endpoint | When to use |
+| Transport | Endpoint | Use case |
 |---|---|---|
-| Streamable HTTP | `POST/GET http://localhost:8585/mcp` | Modern MCP clients (Claude Code `--transport http`, etc.) |
-| SSE (legacy) | `GET http://localhost:8585/sse` + `POST /messages/` | Older MCP clients that haven't moved to streamable-http |
-| Stdio | `docker exec -i engram-memory python /app/mcp_server.py` | When you want a process-per-session model |
-| REST | `POST http://localhost:8585/{store,search,recall,forget,consolidate,connect}` | OpenClaw plugin, custom tooling, raw curl |
-
-If you have the repo cloned and Python 3.10+ on the host, you can also run the stdio MCP server directly without going through the container:
-```bash
-claude mcp add engrammemory -- python mcp/server.py
-```
+| Streamable HTTP | `http://localhost:8585/mcp` | Modern MCP clients |
+| SSE | `http://localhost:8585/sse` | Legacy MCP clients |
+| Stdio | `docker exec -i engram-memory python /app/mcp_server.py` | Process-per-session |
+| REST | `http://localhost:8585/{store,search,...}` | OpenClaw plugin, curl, custom tooling |
 
 ### 3. Use it
 
 ```python
-# Store a memory
 memory_store("User prefers TypeScript over JavaScript", category="preference")
-
-# Search memories
 memory_search("language preferences")
-
-# Forget a memory
 memory_forget(query="old project requirements")
 ```
+
+Start a conversation. Tell it something. Close the session. Come back tomorrow. It remembers.
 
 ---
 
@@ -126,89 +172,56 @@ memory_forget(query="old project requirements")
 ```
 ┌─────────────────┐    ┌─────────────────────────────────────────────────┐
 │   Your Agent    │    │       engrammemory/engram-memory (one image)    │
-│   (OpenClaw,    │───▶│  ┌──────────────────────────────────────────┐  │
-│    Claude Code, │    │  │       Three-Tier Recall Engine           │  │
-│    Cursor,      │    │  │  Tier 1: Hot Cache  (sub-ms, ACT-R)      │  │
-│    Gemini, ...) │    │  │  Tier 2: Hash Index (O(1) LSH lookup)    │  │
-└─────────────────┘    │  │  Tier 3: Qdrant ANN (full hybrid search) │  │
-                       │  │  Graph:  Kuzu spreading activation       │  │
+│   (Claude Code, │    │  ┌──────────────────────────────────────────┐  │
+│    Cursor,      │───▶│  │       Three-Tier Recall Engine           │  │
+│    OpenClaw,    │    │  │  Tier 1: Hot Cache  (sub-ms, ACT-R)      │  │
+│    Gemini, ...) │    │  │  Tier 2: Hash Index (O(1) LSH, 4 heads)  │  │
+│                 │    │  │  Tier 3: Qdrant ANN (dense + BM25 RRF)   │  │
+└─────────────────┘    │  │  Graph:  Kuzu (500 entities, 1-hop)      │  │
                        │  └────────────────┬─────────────────────────┘  │
                        │                   │                            │
                        │   ┌───────────────┴────────────┐               │
                        │   │  FastEmbed ONNX  ─▶ Qdrant │               │
                        │   └────────────────────────────┘               │
+                       │                                                │
+                       │   Optional: ENGRAM_API_KEY extends with cloud  │
+                       │   compression, dedup, overflow, and category   │
+                       │   detection. Local processing stays primary.   │
                        └─────────────────────────────────────────────────┘
               One container. Persistent /data volume. Nothing leaves your network.
 ```
 
-### Repo Structure
-
-```
-engram-memory-community/
-├── plugin/                 ← OpenClaw memory plugin (replaces default memory)
-│   ├── index.js                Plugin entry — registers tools + auto-recall/capture
-│   ├── openclaw.plugin.json    Plugin manifest (kind: "memory")
-│   └── package.json
-├── plugin.py               ← Python entry point for OpenClaw tool calls
-├── src/
-│   └── recall/             ← Three-tier recall engine + graph layer
-│       ├── recall_engine.py    Hot → Hash → Vector pipeline + graph expansion
-│       ├── hot_tier.py         ACT-R activation cache (sub-ms)
-│       ├── multi_head_hasher.py  LSH O(1) candidate retrieval
-│       ├── matryoshka.py       Vector slicing (768 → 256 → 64 dim)
-│       ├── consolidation.py    Janitor (dedup) + Librarian (cross-linking)
-│       ├── graph_layer.py      Kuzu graph for entity tracking
-│       └── models.py           MemoryResult, EngramConfig
-├── mcp/
-│   └── server.py           ← Stdio MCP server (Claude Code, Cursor, Windsurf, VS Code)
-├── docker/
-│   ├── all-in-one/         ← Single-container image (Qdrant + FastEmbed + MCP)
-│   │   ├── Dockerfile         Multi-stage build with s6-overlay supervisor
-│   │   ├── init.sh            Bootstraps the agent-memory collection on first run
-│   │   └── services.d/        s6 service definitions for each bundled process
-│   ├── fastembed/          ← FastEmbed standalone container (used by all-in-one)
-│   └── mcp/                ← Dockerized HTTP MCP server (entrypoint.py + Dockerfile)
-├── scripts/
-│   ├── setup.sh                Installs the all-in-one container + writes compose file
-│   ├── install-plugin.sh       Installs the OpenClaw plugin
-│   └── ...                     Fallback memory_store / memory_search scripts
-├── config/
-│   └── docker-compose.yml
-├── context/                ← Context system (separate from memory; see SKILL.md)
-├── bin/                    ← CLI tools: engram-context, engram-ask, engram-semantic
-├── docs/                   ← Architecture, integration guides, SOUL rules
-├── README.md
-└── LICENSE
-```
-
-The OpenClaw plugin routes through `plugin.py`, which uses the three-tier recall engine. The stdio MCP server (`mcp/server.py`) and the dockerized HTTP MCP server (`docker/mcp/entrypoint.py`) both wrap the same `EngramRecallEngine` from `src/recall/`.
-
 ---
 
-## OpenClaw Integration
+## Connecting to Engram Cloud (Optional)
 
-Engram hooks into OpenClaw's agent lifecycle automatically:
+Engram runs fully local by default. When you need TurboQuant compression, automatic deduplication, overflow storage, or auto-category detection, connect to [Engram Cloud](https://engrammemory.ai):
 
-- **`before_agent_start`** — searches for memories relevant to the user's message and injects them as context
-- **`after_agent_response`** — extracts important facts from the conversation and stores them
-
-```json
-{
-  "plugins": {
-    "entries": {
-      "engram": {
-        "enabled": true,
-        "config": {
-          "qdrantUrl": "http://localhost:6333",
-          "embeddingUrl": "http://localhost:11435",
-          "autoRecall": true,
-          "autoCapture": true
-        }
-      }
-    }
-  }
-}
+**For MCP users (Claude Code, Cursor, etc.):**
+```bash
+# Stop and restart the container with your API key
+docker rm -f engram-memory
+docker run -d --name engram-memory --restart unless-stopped \
+  -p 6333:6333 -p 11435:11435 -p 8585:8585 \
+  -v engram_data:/data \
+  -e ENGRAM_API_KEY=eng_live_YOUR_KEY \
+  engrammemory/engram-memory:latest
 ```
+
+**For OpenClaw users:**
+```bash
+openclaw config set "plugins.entries.engram.config.apiKey" "eng_live_YOUR_KEY"
+openclaw gateway restart
+```
+
+Cloud extends your local stack — it does not replace it. Your FastEmbed still generates embeddings locally. Your Qdrant still stores and searches locally. Cloud adds an intelligence layer on top: the API returns compressed vectors, dedup checks, and category detection for every store, and overflow results for every search when local results are insufficient.
+
+Get an API key (free tier, no credit card) at [app.engrammemory.ai](https://app.engrammemory.ai).
+
+**SDKs:**
+- Python: `pip install engrammemory-ai` — [PyPI](https://pypi.org/project/engrammemory-ai/)
+- Node: `npm install engrammemory-ai` — [npm](https://www.npmjs.com/package/engrammemory-ai)
+- [Dashboard](https://app.engrammemory.ai) | [API Docs](https://api.engrammemory.ai/docs)
 
 ---
 
@@ -216,69 +229,38 @@ Engram hooks into OpenClaw's agent lifecycle automatically:
 
 | Option | Default | Description |
 |---|---|---|
-| `qdrantUrl` | `http://localhost:6333` | Qdrant vector database URL |
-| `embeddingUrl` | `http://localhost:11435` | FastEmbed API endpoint |
-| `embeddingModel` | `nomic-ai/nomic-embed-text-v1.5` | Embedding model |
-| `collection` | `agent-memory` | Memory collection name |
-| `autoRecall` | `true` | Auto-inject relevant memories |
-| `autoCapture` | `true` | Auto-save important context |
-| `maxRecallResults` | `5` | Max memories per auto-recall |
-| `minRecallScore` | `0.35` | Minimum similarity threshold |
-| `debug` | `false` | Enable debug logging |
+| `QDRANT_URL` | `http://localhost:6333` | Qdrant vector database |
+| `FASTEMBED_URL` | `http://localhost:11435` | FastEmbed embedding service |
+| `COLLECTION_NAME` | `agent-memory` | Qdrant collection name |
+| `DATA_DIR` | `/data/engram` | Recall engine state (hot tier, hash index, graph) |
+| `ENGRAM_API_KEY` | *(empty)* | Engram Cloud API key (enables cloud extensions) |
+| `ENGRAM_API_URL` | `https://api.engrammemory.ai` | Cloud API endpoint |
 
----
-
-## Connecting to Engram Cloud (Optional)
-
-Engram runs fully local by default. When you need overflow storage, TurboQuant compression, deduplication, or analytics beyond what your local machine can handle, connect to [Engram Cloud](https://engrammemory.ai):
-
-1. **Get an API key** at [app.engrammemory.ai](https://app.engrammemory.ai) (free tier, no credit card)
-2. **Add it to your OpenClaw config:**
-   ```bash
-   openclaw config set "plugins.entries.engram.config.apiKey" "eng_live_YOUR_KEY"
-   ```
-3. **Restart OpenClaw** — the plugin automatically switches from local to cloud mode
-
-With a key, your memories still live in your Qdrant. Engram Cloud handles embedding, deduplication, and compression in transit — nothing is stored on our servers.
+For OpenClaw plugin config options (`autoRecall`, `autoCapture`, `maxRecallResults`, `minRecallScore`), see [docs/OPENCLAW_INTEGRATION.md](docs/OPENCLAW_INTEGRATION.md).
 
 ---
 
 ## Requirements
 
-- Docker (the all-in-one container is the only required runtime)
+- Docker
 - 4 GB+ RAM
-- 10 GB+ storage for the persistent volume
+- 10 GB+ storage
 
-Optional, only if you want to run the stdio MCP server, the OpenClaw plugin in fallback mode, or the `engram-context` / `engram-ask` CLI tools directly on the host:
-
-- Python 3.10+
+Python 3.10+ only needed if running the stdio MCP server or CLI tools directly on the host.
 
 ---
 
 ## Data & Privacy
 
-Engram is local-only. No data leaves your machine.
+Engram Community is local-only by default. No data leaves your machine.
 
-- **Memory tools** store and search vectors in the Qdrant instance bundled inside the container
-- **Embeddings** are generated by FastEmbed (ONNX, native ARM64 + x86_64) running in the same container
-- **Context system** only reads `.md` files inside your project's `.context/` directory — never arbitrary project files
-- **Auto-recall/auto-capture** (when enabled) operate within the OpenClaw agent lifecycle — memories stay in your local Qdrant
-- **No telemetry, no phone-home, no external API calls**
+- Embeddings are generated by FastEmbed (ONNX) inside the container
+- Vectors are stored in Qdrant inside the container
+- No telemetry, no phone-home, no external API calls
 
-The Docker image `engrammemory/engram-memory` is built from `docker/all-in-one/Dockerfile` in this repo. You can verify or rebuild it yourself with `docker build -f docker/all-in-one/Dockerfile -t engrammemory/engram-memory:local .`.
+When `ENGRAM_API_KEY` is set, the recall engine sends text to `api.engrammemory.ai` for compression, dedup, and category detection. The API returns metadata — your Qdrant still stores the vectors. See [engrammemory.ai/privacy](https://engrammemory.ai/privacy) for cloud data handling.
 
----
-
-## Engram Cloud
-
-Need deduplication, compression, lifecycle management, multi-agent isolation, or analytics? [Engram Cloud](https://engrammemory.ai) adds enterprise intelligence on top of your self-hosted storage.
-
-Your Memory stays yours. Engram Cloud processes in transit and stores nothing.
-
-**SDKs:**
-- Python: `pip install engrammemory-ai` — [PyPI](https://pypi.org/project/engrammemory-ai/)
-- Node: `npm install engrammemory-ai` — [npm](https://www.npmjs.com/package/engrammemory-ai)
-- [Dashboard](https://app.engrammemory.ai) | [API Docs](https://api.engrammemory.ai/docs)
+The Docker image is built from `docker/all-in-one/Dockerfile` in this repo. You can verify and rebuild it yourself.
 
 ---
 
