@@ -132,7 +132,7 @@ class EngramConsolidator:
 
             # Store merged memory
             try:
-                new_id = await self.engine.store(
+                new_id, _ = await self.engine.store(
                     content=base_content,
                     category=base_category,
                 )

@@ -181,11 +181,12 @@ async def list_tools():
             {"name": "memory_forget", "description": "Delete a memory"},
             {"name": "memory_consolidate", "description": "Merge near-duplicate memories"},
             {"name": "memory_connect", "description": "Discover cross-category connections"},
+            {"name": "memory_feedback", "description": "Report which search results were useful"},
         ],
         "transports": {
             "streamable_http": "/mcp",
             "sse": "/sse",
-            "rest": ["/store", "/search", "/recall", "/forget", "/consolidate", "/connect"],
+            "rest": ["/store", "/search", "/recall", "/forget", "/consolidate", "/connect", "/feedback"],
         },
     }
 
@@ -201,10 +202,10 @@ async def store(request: Request):
     if not text:
         return JSONResponse({"error": "text is required"}, status_code=400)
     try:
-        doc_id = await mcp_server.engine.store(
+        doc_id, resolved_category = await mcp_server.engine.store(
             content=text, category=category, metadata=body.get("metadata")
         )
-        return {"success": True, "memory_id": doc_id, "category": category}
+        return {"success": True, "memory_id": doc_id, "category": resolved_category}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
@@ -285,6 +286,24 @@ async def connect(request: Request):
         return {"success": True, **result}
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/feedback")
+async def feedback(request: Request):
+    body = await request.json()
+    query = body.get("query", "")
+    selected_ids = body.get("selected_ids", [])
+    rejected_ids = body.get("rejected_ids", [])
+
+    if not query or not selected_ids:
+        return JSONResponse({"error": "query and selected_ids are required"}, status_code=400)
+
+    result = await mcp_server.engine.ingest_rerank_feedback(
+        query=query,
+        selected_ids=selected_ids,
+        rejected_ids=rejected_ids,
+    )
+    return JSONResponse(result)
 
 
 if __name__ == "__main__":

@@ -129,6 +129,7 @@ class EngramGraphLayer:
             "CREATE REL TABLE IF NOT EXISTS MENTIONS(FROM Memory TO Entity)",
             "CREATE REL TABLE IF NOT EXISTS RELATED_TO(FROM Memory TO Memory, weight DOUBLE)",
             "CREATE REL TABLE IF NOT EXISTS CO_RETRIEVED(FROM Memory TO Memory, count INT64, last_time DOUBLE)",
+            "CREATE REL TABLE IF NOT EXISTS PREFERRED_OVER(FROM Memory TO Memory, query_hash STRING, count INT64, last_time DOUBLE)",
         ]
         for stmt in stmts:
             try:
@@ -284,6 +285,40 @@ class EngramGraphLayer:
             )
         except Exception as e:
             logger.debug(f"Memory removal failed: {e}")
+
+    def add_preference(self, selected_id: str, rejected_id: str, query_hash: str):
+        """Record that selected_id was preferred over rejected_id for a query."""
+        now = time.time()
+        try:
+            result = self.conn.execute(
+                "MATCH (a:Memory {id: $sel})-[r:PREFERRED_OVER]->(b:Memory {id: $rej}) "
+                "WHERE r.query_hash = $qh "
+                "SET r.count = r.count + 1, r.last_time = $now "
+                "RETURN r.count",
+                {"sel": selected_id, "rej": rejected_id, "qh": query_hash, "now": now},
+            )
+            if not result.has_next():
+                self.conn.execute(
+                    "MATCH (a:Memory {id: $sel}), (b:Memory {id: $rej}) "
+                    "CREATE (a)-[:PREFERRED_OVER {query_hash: $qh, count: 1, last_time: $now}]->(b)",
+                    {"sel": selected_id, "rej": rejected_id, "qh": query_hash, "now": now},
+                )
+        except Exception as e:
+            logger.debug(f"Preference recording failed: {e}")
+
+    def get_preference_boost(self, doc_id: str, limit: int = 5) -> int:
+        """Get how many times this memory has been preferred over others."""
+        try:
+            result = self.conn.execute(
+                "MATCH (m:Memory {id: $id})-[r:PREFERRED_OVER]->() RETURN sum(r.count) AS total",
+                {"id": doc_id},
+            )
+            if result.has_next():
+                val = result.get_next()[0]
+                return int(val) if val else 0
+        except Exception:
+            pass
+        return 0
 
     def get_stats(self) -> Dict:
         """Get node and edge counts."""
