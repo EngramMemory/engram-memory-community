@@ -111,6 +111,13 @@ class EngramConfig:
     hash_fallback_to_vector: bool = True  # If hash returns 0, do full scan
     hot_tier_context_inject: bool = True   # Inject hot memories into prompt
 
+    # Engram Cloud (optional extension — local processing is always primary)
+    # When api_key is set, the engine sends text to Engram Cloud AFTER local
+    # embed for: compressed vectors, dedup check, category detection, and
+    # overflow search. Local FastEmbed + Qdrant still do all the heavy work.
+    api_key: str = ""                # eng_live_... — leave empty for local-only
+    api_url: str = "https://api.engrammemory.ai"
+
     # Persistence
     data_dir: str = ".engram"
     auto_persist: bool = True
