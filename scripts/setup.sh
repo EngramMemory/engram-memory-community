@@ -305,27 +305,49 @@ if ! echo "$PATH" | grep -q "$ENGRAM_BIN"; then
     echo -e "${GREEN}Added engram commands to PATH (restart shell or source rc file)${NC}"
 fi
 
+# Register MCP with Claude Code (if available)
+echo ""
+echo -e "${BLUE}Registering MCP with AI clients...${NC}"
+
+if command -v claude &> /dev/null; then
+    # Remove any existing registration first (idempotent)
+    claude mcp remove engrammemory -s user 2>/dev/null || true
+    claude mcp remove engrammemory -s local 2>/dev/null || true
+    # Register at user scope (available across all projects)
+    claude mcp add engrammemory -s user --transport http http://localhost:8585/mcp 2>/dev/null
+    echo -e "${GREEN}Claude Code MCP registered (user scope, all projects)${NC}"
+else
+    echo -e "${YELLOW}Claude CLI not found — register manually:${NC}"
+    echo "   claude mcp add engrammemory -s user --transport http http://localhost:8585/mcp"
+fi
+
 # Success message
 echo ""
 echo -e "${GREEN}Engram setup complete!${NC}"
 echo ""
 echo -e "${YELLOW}Next Steps:${NC}"
 echo ""
+echo "For OpenClaw users:"
 echo "1. Add the following to your ~/.openclaw/openclaw.json:"
 echo ""
 echo -e "${BLUE}$(cat openclaw-memory-config.json)${NC}"
 echo ""
-echo "2. (Optional) Add memory rules to your agent's system prompt:"
-echo "   See docs/SOUL-RULES.md for recommended rules that teach"
-echo "   your agent to use memory proactively. Use what fits your style."
-echo ""
-echo "3. Restart OpenClaw gateway:"
+echo "2. Restart OpenClaw gateway:"
 echo "   openclaw gateway restart"
 echo ""
-echo "4. Test in your agent:"
+echo "For Claude Code users:"
+echo "   Already registered! Start a new Claude Code session and"
+echo "   the memory tools are available automatically."
+echo ""
+echo "For Cursor / Windsurf / VS Code / other MCP clients:"
+echo "   npx -y install-mcp@latest http://localhost:8585/mcp --client <your-client> --name engrammemory --oauth=no -y"
+echo ""
+echo "(Optional) Add SOUL rules to make your agent use memory proactively:"
+echo "   See docs/SOUL-RULES.md"
+echo ""
+echo "Test in your agent:"
 echo "   memory_store \"I love persistent memory!\" --category preference"
 echo "   memory_search \"memory preferences\""
-echo "   context_ask \"How does authentication work?\""
 echo ""
 echo -e "${YELLOW}Context System:${NC}"
 echo "   Initialize a project:  engram-context init /path/to/project --template web-app"
