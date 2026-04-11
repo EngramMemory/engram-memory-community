@@ -30,6 +30,9 @@ class MemoryResult:
     strength: float = 0.0     # ACT-R activation (hot-tier only)
     similarity: float = 0.0   # Raw cosine similarity
     retrieval_probability: float = 0.0  # ACT-R Boltzmann gate (0-1)
+    confidence: str = ""        # "high" | "medium" | "low" — set during search
+    match_context: str = ""     # Why this result matched (helps calling model rerank)
+    preference_boost: float = 0.0  # Boost from reranking feedback (0 = no feedback yet)
     doc_vector: Any = None    # Transient: actual document vector for hot-tier promotion
 
     def to_dict(self) -> dict:
@@ -45,6 +48,9 @@ class MemoryResult:
             "strength": round(self.strength, 4),
             "similarity": round(self.similarity, 4),
             "retrieval_probability": round(self.retrieval_probability, 4),
+            "confidence": self.confidence,
+            "match_context": self.match_context,
+            "preference_boost": round(self.preference_boost, 4),
         }
 
 
@@ -70,15 +76,15 @@ class EngramConfig:
     full_dim: int = 768       # For final re-ranking
 
     # Multi-Head Hasher
-    hasher_num_heads: int = 4       # Community: max 4
-    hasher_hash_size: int = 12      # Community: max 12 bits
+    hasher_num_heads: int = 6       # Community: max 6 (more heads = more candidates)
+    hasher_hash_size: int = 14      # Community: max 14 bits (finer buckets)
     hasher_seed: int = 42           # Deterministic projections
     hasher_persist_path: str = ".engram/hash_index.pkl"
 
     # Hot-Tier Cache
     hot_tier_max_size: int = 1000   # Community: max 1000
     hot_tier_decay_rate: float = 0.1
-    hot_tier_similarity_threshold: float = 0.65
+    hot_tier_similarity_threshold: float = 0.55
     hot_tier_persist_path: str = ".engram/hot_tier.json"
     hot_tier_sweep_interval: float = 3600.0  # Decay sweep every hour
 
@@ -105,6 +111,7 @@ class EngramConfig:
     auto_capture: bool = True
     max_recall_results: int = 5
     min_recall_score: float = 0.35
+    negative_score_ceiling: float = 0.45  # Scores below this get "low" confidence
 
     # Search behavior
     search_top_k: int = 10
@@ -122,6 +129,10 @@ class EngramConfig:
     data_dir: str = ".engram"
     auto_persist: bool = True
     persist_interval: float = 300.0  # Auto-save every 5 minutes
+
+    # Reranking
+    reranker_enabled: bool = False  # Disabled: cosine re-rank outperforms ms-marco-MiniLM for this use case
+    reranker_model: str = "Xenova/ms-marco-MiniLM-L-6-v2"
 
     # Debug
     debug: bool = False

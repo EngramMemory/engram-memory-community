@@ -16,7 +16,7 @@ Usage:
     await engine.warmup()
 
     # Store
-    doc_id = await engine.store("User prefers TypeScript", category="preference")
+    doc_id, _ = await engine.store("User prefers TypeScript", category="preference")
 
     # Search (automatically uses best tier)
     results = await engine.search("language preferences", top_k=5)
@@ -69,6 +69,13 @@ _STOPWORDS = frozenset({
     "your", "he", "him", "his", "she", "her", "they", "them", "their",
     "what", "which", "who",
 })
+
+_CATEGORY_PATTERNS = {
+    "decision": re.compile(r"\b(decided|chose|chosen|selected|will use|going with|switched to|moved to|picking|we chose|opted for|committed to|approved|rejected|went with|agreed to|adopted|deprecated|migrated to)\b", re.IGNORECASE),
+    "preference": re.compile(r"\b(prefer|like|always|never|want|love|hate|enjoy|favor|rather|choose to|tend to|usually|my favorite|i always|strongly preferred|mandatory|over spaces|over tabs)\b", re.IGNORECASE),
+    "fact": re.compile(r"\b(completed|version|status|count|runs|running|deployed|migrated|installed|updated|is at|currently|uses|located|configured|set to|costs|takes|measures|port|hosted|serves|stores|contains|supports|weighs|amounts|totals|averages|scheduled|launches?|occurs?|recurring|window|every \w+day|founded|has \d+|pays?\b|expires?|limit|rate|coverage|takes approximately|on port)\b", re.IGNORECASE),
+    "entity": re.compile(r"\b(company|team|person|project|service|app|platform|organization|department|manager|lead|owner|maintainer|vendor|client|VP|CTO|CEO|engineer)\b", re.IGNORECASE),
+}
 
 
 def text_to_sparse_vector(text: str, boost_specifics: bool = False) -> Dict:
@@ -229,6 +236,58 @@ class EngramRecallEngine:
             except Exception as e:
                 logger.warning(f"Consolidator init failed: {e}")
 
+        # If hash index is empty but Qdrant has data, rebuild from vectors.
+        # This handles fresh volumes, config changes, or corrupted state.
+        if self.hasher.size == 0:
+            try:
+                resp = await self._http.get(
+                    f"{self.config.qdrant_url}/collections/{self.config.collection}"
+                )
+                if resp.status_code == 200:
+                    points = resp.json().get("result", {}).get("points_count", 0)
+                    if points > 0:
+                        logger.info(f"Hash index empty but Qdrant has {points} points — rebuilding...")
+                        count = await self.rebuild_hash_index()
+                        logger.info(f"Hash index rebuilt: {count} documents indexed")
+            except Exception as e:
+                logger.debug(f"Hash rebuild check skipped: {e}")
+
+        # Pre-warm hot tier from recent Qdrant data if it's empty
+        if self.hot_tier.size == 0 and self.hasher.size > 0:
+            try:
+                # Scroll recent memories to seed the hot tier
+                resp = await self._http.post(
+                    f"{self.config.qdrant_url}/collections/{self.config.collection}/points/scroll",
+                    json={
+                        "limit": min(100, self.config.hot_tier_max_size),
+                        "with_payload": True,
+                        "with_vector": True,
+                        "order_by": [{"key": "created_at", "direction": "desc"}],
+                    },
+                )
+                if resp.status_code == 200:
+                    points = resp.json().get("result", {}).get("points", [])
+                    for point in points:
+                        payload = point.get("payload", {})
+                        raw_vec = point.get("vector", {})
+                        if isinstance(raw_vec, dict):
+                            raw_vec = raw_vec.get("dense", [])
+                        if raw_vec:
+                            import numpy as np
+                            vec = np.array(raw_vec, dtype=np.float32)
+                            self.hot_tier.upsert(
+                                doc_id=str(point.get("id", "")),
+                                vector=vec,
+                                content=payload.get("content", ""),
+                                category=payload.get("category", "other"),
+                                metadata={k: v for k, v in payload.items()
+                                         if k not in ("content", "category", "created_at")},
+                            )
+                    if points:
+                        logger.info(f"Pre-warmed hot tier with {len(points)} recent memories")
+            except Exception as e:
+                logger.debug(f"Hot tier pre-warm skipped: {e}")
+
         logger.info("Engram Recall Engine started (Three-Tiered Brain)")
 
     async def shutdown(self) -> None:
@@ -331,6 +390,66 @@ class EngramRecallEngine:
     def _cloud_enabled(self) -> bool:
         return bool(self.config.api_key)
 
+    def _local_classify(self, text: str) -> str:
+        """Keyword-based category detection with priority ordering.
+
+        Priority: decision > preference > fact > entity > other
+        When multiple categories match with equal scores, higher-priority wins.
+        """
+        scores = {}
+        for cat, pattern in _CATEGORY_PATTERNS.items():
+            matches = pattern.findall(text)
+            scores[cat] = len(matches)
+
+        if not scores or max(scores.values()) == 0:
+            return "other"
+
+        # Priority ordering: decision > preference > fact > entity
+        # _CATEGORY_PATTERNS is ordered this way, so max() with equal
+        # scores returns the first (highest priority) category
+        max_score = max(scores.values())
+        for cat in _CATEGORY_PATTERNS:  # iterates in insertion order
+            if scores.get(cat, 0) == max_score:
+                return cat
+        return "other"
+
+    @staticmethod
+    def _build_match_context(result: "MemoryResult", query: str) -> str:
+        """Build a human-readable explanation of why this result matched.
+
+        This helps calling models (Claude, GPT, etc.) naturally rerank
+        results without Engram needing to pay for LLM inference.
+        """
+        parts = []
+
+        # Tier info
+        tier_desc = {
+            "hot": "frequently accessed",
+            "hash": "structurally similar",
+            "vector": "semantically similar",
+            "graph": "related via connections",
+            "overflow": "from cloud archive",
+        }
+        parts.append(tier_desc.get(result.tier, result.tier))
+
+        # Category context
+        if result.category and result.category != "other":
+            parts.append(f"category: {result.category}")
+
+        # Confidence
+        if result.confidence:
+            parts.append(f"{result.confidence} confidence")
+
+        # Access frequency (hot tier signal)
+        if result.access_count > 5:
+            parts.append(f"accessed {result.access_count}x")
+
+        # Preference signal from feedback
+        if result.preference_boost > 0:
+            parts.append("previously confirmed relevant")
+
+        return " | ".join(parts)
+
     async def _cloud_intelligence(self, text: str) -> Dict:
         """Call Engram Cloud /v1/intelligence for compression, dedup, and
         category detection. Returns empty dict on failure so local processing
@@ -421,7 +540,11 @@ class EngramRecallEngine:
         cloud = await self._cloud_intelligence(content)
         if cloud.get("dedup", {}).get("is_duplicate"):
             logger.debug(f"Cloud dedup: skipping duplicate (similarity {cloud['dedup'].get('similarity', '?')})")
-            return doc_id  # return ID but don't write — caller sees success
+            return doc_id, category  # return ID but don't write — caller sees success
+
+        # Local keyword classifier — free, instant, no API needed
+        if category == "other":
+            category = self._local_classify(content)
 
         # If cloud provided a better category and caller used default, use it
         if cloud.get("category") and category == "other":
@@ -480,7 +603,7 @@ class EngramRecallEngine:
                 logger.debug(f"Graph indexing failed: {e}")
 
         logger.debug(f"Stored memory {doc_id}: {content[:80]}...")
-        return doc_id
+        return doc_id, category
 
     # --- Search (The Three-Tiered Pipeline) ---
 
@@ -657,9 +780,207 @@ class EngramRecallEngine:
             except Exception as e:
                 logger.debug(f"Cloud overflow search failed (local unaffected): {e}")
 
-        # Final sort by score, take top_k
+        # Post-fusion cosine re-rank: re-score vector/hash tier results
+        # by pure semantic similarity so relevant content outranks
+        # keyword-heavy generic memories.
+        for r in results:
+            if r.doc_vector is not None and len(r.doc_vector) > 0:
+                cos_sim = float(cosine_similarity(query_vector, r.doc_vector))
+                r.score = cos_sim
+                r.similarity = cos_sim
+
+        # Preference boost: memories confirmed useful by calling models
+        # get a score boost proportional to how many times they've been preferred.
+        if self.graph:
+            for r in results:
+                try:
+                    pref_count = self.graph.get_preference_boost(r.doc_id)
+                    if pref_count > 0:
+                        # Logarithmic boost: diminishing returns to prevent runaway scores
+                        # 1 preference = 5% boost, 5 = 12% boost, 20 = 18% boost
+                        boost = 1.0 + 0.05 * math.log1p(pref_count)
+                        r.score *= boost
+                        r.preference_boost = boost - 1.0  # Store the delta, not the multiplier
+                        logger.debug(f"Preference boost for {r.doc_id[:8]}: {pref_count} prefs → {boost:.3f}x")
+                except Exception:
+                    pass
+
+
+        # Cross-encoder reranking: blend semantic similarity with cross-encoder
+        # judgment before normalization so blending operates on comparable scales.
+        results = await self._rerank_results(query, results, top_k)
+
+        # Score normalization and confidence tagging
+        for r in results:
+            # Normalize scores: stretch the useful 0.3-1.0 range to 0.0-1.0
+            raw = r.score
+            r.score = max(0.0, min(1.0, (raw - 0.3) / 0.7))
+            # Tag confidence
+            if raw >= 0.7:
+                r.confidence = "high"
+            elif raw >= 0.5:
+                r.confidence = "medium"
+            else:
+                r.confidence = "low"
+
+        # Build match context for each result (helps calling model rerank)
+        for r in results:
+            r.match_context = self._build_match_context(r, query)
+
+        # Final sort by normalized score, take top_k
         results.sort(key=lambda r: r.score, reverse=True)
         return results[:top_k]
+
+    async def ingest_rerank_feedback(
+        self,
+        query: str,
+        selected_ids: List[str],
+        rejected_ids: Optional[List[str]] = None,
+    ) -> Dict:
+        """
+        Ingest reranking feedback from the calling model.
+
+        When an AI agent uses search results, it can report which results
+        were actually useful. This signal is free — the agent's model
+        already evaluated the results. We just capture the judgment.
+
+        Effects:
+        - Selected memories get boosted in hot tier (access_count +2, last_access refreshed)
+        - Rejected memories get penalized for this query context (hits -1, floor 1)
+        - PREFERRED_OVER edges stored in Kuzu graph for future searches
+        """
+        query_hash = hashlib.md5(query.encode()).hexdigest()[:12]
+        now = time.time()
+
+        boosted = 0
+        penalized = 0
+        edges_added = 0
+
+        # Boost selected memories — force-promote to hot tier if not already there
+        for doc_id in selected_ids:
+            entry = self.hot_tier.get_memory(doc_id)
+            if not entry:
+                # Memory not in hot tier — fetch from Qdrant and promote
+                try:
+                    resp = await self._http.post(
+                        f"{self.config.qdrant_url}/collections/{self.config.collection}/points",
+                        json={"ids": [doc_id], "with_payload": True, "with_vector": True},
+                    )
+                    if resp.status_code == 200:
+                        points = resp.json().get("result", [])
+                        if points:
+                            point = points[0]
+                            payload = point.get("payload", {})
+                            raw_vec = point.get("vector", {})
+                            if isinstance(raw_vec, dict):
+                                raw_vec = raw_vec.get("dense", [])
+                            if raw_vec:
+                                vec = np.array(raw_vec, dtype=np.float32)
+                                self.hot_tier.upsert(
+                                    doc_id=doc_id,
+                                    vector=vec,
+                                    content=payload.get("content", ""),
+                                    category=payload.get("category", "other"),
+                                    metadata={k: v for k, v in payload.items()
+                                             if k not in ("content", "category", "created_at")},
+                                )
+                                entry = self.hot_tier.get_memory(doc_id)
+                                logger.debug(f"Force-promoted {doc_id[:8]} to hot tier for feedback")
+                except Exception as e:
+                    logger.debug(f"Failed to fetch {doc_id[:8]} from Qdrant for feedback: {e}")
+
+            if entry:
+                entry.hits += 5  # Stronger boost (was +2, now +5)
+                entry.last_access = time.time()
+                boosted += 1
+                logger.debug(f"Boosted {doc_id[:8]} (hits now {entry.hits})")
+
+        # Penalize rejected memories (only if already in hot tier)
+        for doc_id in (rejected_ids or []):
+            entry = self.hot_tier.get_memory(doc_id)
+            if entry:
+                entry.hits = max(1, entry.hits - 3)  # Stronger penalty (was -1, now -3)
+                penalized += 1
+                logger.debug(f"Penalized {doc_id[:8]} (hits now {entry.hits})")
+
+        # Store preference edges in graph
+        if self.graph and selected_ids and rejected_ids:
+            for sel_id in selected_ids:
+                for rej_id in rejected_ids:
+                    try:
+                        self.graph.add_preference(sel_id, rej_id, query_hash)
+                        edges_added += 1
+                    except Exception as e:
+                        logger.debug(f"Preference edge failed: {e}")
+
+        return {
+            "success": True,
+            "boosted": boosted,
+            "penalized": penalized,
+            "edges_added": edges_added,
+        }
+
+    async def _rerank_results(
+        self, query: str, results: List[MemoryResult], top_k: int
+    ) -> List[MemoryResult]:
+        """Cross-encoder reranking via local FastEmbed model.
+
+        Uses sigmoid normalization (correct for ms-marco models) and
+        QMD-style position-aware blending:
+        - Rank 1-3:  80% original / 20% reranker (protect high-confidence)
+        - Rank 4-10: 55% original / 45% reranker
+        - Rank 11+:  35% original / 65% reranker
+
+        Top-rank protection: rank #1 result gets a +0.05 bonus before
+        blending to resist demotion (QMD approach).
+        """
+        if not results or not self.config.reranker_enabled:
+            return results
+
+        try:
+            documents = [r.content for r in results]
+            resp = await self._http.post(
+                f"{self.config.embedding_url}/rerank",
+                json={"query": query, "documents": documents},
+                timeout=10.0,
+            )
+            if resp.status_code != 200:
+                logger.debug(f"Reranker unavailable ({resp.status_code}), using original order")
+                return results
+
+            rerank_scores = resp.json().get("scores", [])
+            if len(rerank_scores) != len(results):
+                return results
+
+            # Sigmoid normalization: correct for ms-marco cross-encoders.
+            # Raw logits are unbounded; sigmoid maps to [0, 1] probability.
+            # This is what ms-marco was trained with — NOT min-max.
+            import math
+            rerank_scores = [1.0 / (1.0 + math.exp(-s)) for s in rerank_scores]
+
+            # Position-aware blending with top-rank protection
+            for i, r in enumerate(results):
+                rank = i + 1
+                rerank_score = rerank_scores[i]
+                original_score = r.score
+
+                # Top-rank bonus: protect rank #1 from demotion (QMD approach)
+                if rank == 1:
+                    original_score += 0.05
+
+                if rank <= 3:
+                    r.score = 0.80 * original_score + 0.20 * rerank_score
+                elif rank <= 10:
+                    r.score = 0.55 * original_score + 0.45 * rerank_score
+                else:
+                    r.score = 0.35 * original_score + 0.65 * rerank_score
+
+            results.sort(key=lambda r: r.score, reverse=True)
+            return results[:top_k]
+
+        except Exception as e:
+            logger.debug(f"Reranking failed, using original order: {e}")
+            return results
 
     async def _fetch_and_rerank(
         self,
@@ -752,12 +1073,12 @@ class EngramRecallEngine:
                         {
                             "query": query_vector.tolist(),
                             "using": "dense",
-                            "limit": top_k * 2,
+                            "limit": top_k * 3,
                         },
                         {
                             "query": sparse,
                             "using": "bm25",
-                            "limit": top_k * 4,
+                            "limit": top_k,
                         },
                     ],
                     "query": {"fusion": "rrf"},

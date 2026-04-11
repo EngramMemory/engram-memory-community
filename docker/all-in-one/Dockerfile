@@ -23,7 +23,7 @@
 FROM python:3.12-slim AS python-deps
 
 RUN pip install --no-cache-dir \
-        fastembed==0.7.4 \
+        fastembed>=0.8.0 \
         fastapi>=0.115.0 \
         uvicorn>=0.34.0 \
         numpy>=1.26.0 \

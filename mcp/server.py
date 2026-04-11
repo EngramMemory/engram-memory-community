@@ -130,7 +130,7 @@ class EngramMCPServer:
                 ),
                 Tool(
                     name="memory_search",
-                    description="Search memories using three-tier recall: hot cache (sub-ms) → hash index (O(1)) → vector search (fallback)",
+                    description="Search memories using three-tier recall. Results include match_context to help you identify the most relevant result.",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -187,6 +187,35 @@ class EngramMCPServer:
                     },
                 ),
                 Tool(
+                    name="memory_feedback",
+                    description=(
+                        "Report which search results were useful. "
+                        "After using memory_search results, call this to help Engram learn "
+                        "which memories are most relevant. This improves future search accuracy "
+                        "at zero cost — your model already evaluated the results."
+                    ),
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "The original search query",
+                            },
+                            "selected_ids": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Memory IDs that were useful/relevant",
+                            },
+                            "rejected_ids": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Memory IDs that were not relevant (optional)",
+                            },
+                        },
+                        "required": ["query", "selected_ids"],
+                    },
+                ),
+                Tool(
                     name="memory_connect",
                     description=(
                         "Librarian: discover cross-category connections for a memory. "
@@ -220,6 +249,8 @@ class EngramMCPServer:
                 result = await self._handle_consolidate(**arguments)
             elif name == "memory_connect":
                 result = await self._handle_connect(**arguments)
+            elif name == "memory_feedback":
+                result = await self._handle_feedback(**arguments)
             else:
                 raise ValueError(f"Unknown tool: {name}")
 
@@ -232,13 +263,13 @@ class EngramMCPServer:
     ) -> Dict[str, Any]:
         try:
             if self.engine:
-                doc_id = await self.engine.store(
+                doc_id, resolved_category = await self.engine.store(
                     content=text,
                     category=category,
                     metadata={"importance": importance},
                 )
                 logger.info(f"Stored memory {doc_id} via recall engine")
-                return {"success": True, "memory_id": doc_id, "category": category}
+                return {"success": True, "memory_id": doc_id, "category": resolved_category}
             else:
                 return {"success": False, "error": "Recall engine not available"}
         except Exception as e:
@@ -337,6 +368,20 @@ class EngramMCPServer:
         except Exception as e:
             logger.error(f"Connect failed: {e}")
             return {"success": False, "error": str(e)}
+
+
+    async def _handle_feedback(
+        self, query: str, selected_ids: list, rejected_ids: list | None = None, **_
+    ) -> Dict[str, Any]:
+        """Handle memory_feedback tool calls."""
+        if not self.engine:
+            return {"error": "Recall engine not available"}
+        result = await self.engine.ingest_rerank_feedback(
+            query=query,
+            selected_ids=selected_ids,
+            rejected_ids=rejected_ids,
+        )
+        return result
 
 
 async def main():
