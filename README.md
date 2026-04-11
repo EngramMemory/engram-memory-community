@@ -69,8 +69,9 @@ This installs Engram as a **plugin** (not a skill) and sets it as the memory bac
 
 **Claude Code** — native MCP HTTP transport (no Node, no host Python):
 ```bash
-claude mcp add engrammemory --transport http http://localhost:8585/mcp
+claude mcp add engrammemory -s user --transport http http://localhost:8585/mcp
 ```
+The `-s user` flag makes Engram available across all your projects, not just the current directory.
 
 **Cursor, Windsurf, VS Code, Claude Desktop, Cline, Zed, Gemini CLI, Codex, and 7 other clients** — use the universal [`install-mcp`](https://www.npmjs.com/package/install-mcp) helper. It detects your client and writes the right config file for you:
 ```bash
