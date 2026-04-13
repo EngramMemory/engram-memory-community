@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "engram-bridge"
+version = "0.1.0"
+description = "Client daemon that pulls Engram memories into agent sessions."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [
+  { name = "Engram Memory" }
+]
+keywords = ["engram", "memory", "llm", "agent", "context", "claude"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+  "httpx>=0.25,<1.0",
+  "pyyaml>=6.0,<7.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7",
+]
+
+[project.scripts]
+engram-bridge = "bridge.cli:main"
+
+[project.urls]
+Homepage = "https://engrammemory.ai"
+Source = "https://github.com/engram-memory/engram-memory-community"
+
+[tool.setuptools]
+# The bridge package is the directory containing this pyproject.toml,
+# imported as top-level `bridge`. We pin it explicitly so setuptools
+# doesn't confuse it with anything else in the community repo.
+packages = ["bridge"]
+package-dir = { bridge = "." }
