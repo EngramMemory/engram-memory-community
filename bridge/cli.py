@@ -21,9 +21,18 @@ from .config import (
     write_config_template,
 )
 from .client import EngramClient
-from .install import install_claude_code_hook
+from .install import install_claude_code_hook, install_git_hooks
 from .project import detect_project
 from .pull import PullOutcome, run_pull
+from .push import (
+    EVENT_COMMIT,
+    EVENT_MANUAL,
+    EVENT_TEST_PASS,
+    PushOutcome,
+    push_git_commit,
+    push_manual,
+    push_test_pass,
+)
 
 
 PROG = "engram bridge"
@@ -88,6 +97,82 @@ def _build_parser() -> argparse.ArgumentParser:
             "Create ~/.engram/config.yaml from the template if it "
             "doesn't exist."
         ),
+    )
+    install.add_argument(
+        "--git-hooks",
+        dest="git_hooks",
+        action="store_true",
+        help=(
+            "Install a post-commit hook that pushes each commit to "
+            "the Engram cloud. Idempotent; merges into any existing "
+            "hook and creates a timestamped backup."
+        ),
+    )
+    install.add_argument(
+        "--repo",
+        dest="repo",
+        default=None,
+        help=(
+            "Repo directory for --git-hooks. Defaults to the current "
+            "working directory."
+        ),
+    )
+
+    push = sub.add_parser(
+        "push",
+        help="Push a manual milestone memory to the Engram cloud.",
+    )
+    push.add_argument(
+        "message",
+        help="Free-form text to store (e.g. 'shipped wave 2').",
+    )
+    push.add_argument(
+        "--type",
+        dest="push_type",
+        default=EVENT_MANUAL,
+        help="Event type label. Default: milestone.",
+    )
+    push.add_argument(
+        "--metadata",
+        dest="metadata",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help=(
+            "Extra metadata as key=value pairs. Repeat for multiple "
+            "entries. Values are stored as strings."
+        ),
+    )
+
+    push_commit = sub.add_parser(
+        "push-commit",
+        help=(
+            "Push the current HEAD commit. Wired from the post-commit "
+            "git hook."
+        ),
+    )
+    push_commit.add_argument(
+        "--repo",
+        dest="repo",
+        default=None,
+        help="Repo directory. Defaults to the current working directory.",
+    )
+
+    push_test = sub.add_parser(
+        "push-test",
+        help="Push a green test-suite event.",
+    )
+    push_test.add_argument("suite", help="Suite name.")
+    push_test.add_argument(
+        "duration", type=float, help="Wall time in seconds."
+    )
+    push_test.add_argument("count", type=int, help="Test count.")
+    push_test.add_argument(
+        "--runner",
+        dest="runner",
+        default="pytest",
+        choices=["pytest", "jest", "cargo", "go", "custom"],
+        help="Test runner. Default: pytest.",
     )
 
     return parser
@@ -187,12 +272,105 @@ def _cmd_install(args: argparse.Namespace) -> int:
         result = install_claude_code_hook()
         sys.stdout.write(result.message + "\n")
         did_anything = True
+    if args.git_hooks:
+        repo = args.repo or str(Path.cwd())
+        try:
+            outcome = install_git_hooks(repo)
+        except Exception as exc:  # noqa: BLE001
+            sys.stdout.write(
+                "git-hooks install failed: {}\n".format(exc)
+            )
+        else:
+            sys.stdout.write(outcome.message + "\n")
+        did_anything = True
     if not did_anything:
         sys.stdout.write(
-            "Nothing to install. Pass --claude-code and/or "
-            "--write-config-template.\n"
+            "Nothing to install. Pass --claude-code, --git-hooks, "
+            "and/or --write-config-template.\n"
         )
     return 0
+
+
+def _parse_metadata_pairs(pairs: List[str]) -> dict:
+    """Parse ``--metadata k=v`` pairs into a dict. Silently drops
+    malformed entries rather than failing the push."""
+    out: dict = {}
+    for raw in pairs or []:
+        if not isinstance(raw, str) or "=" not in raw:
+            continue
+        key, _, value = raw.partition("=")
+        key = key.strip()
+        if not key:
+            continue
+        out[key] = value.strip()
+    return out
+
+
+def _cmd_push(args: argparse.Namespace) -> int:
+    try:
+        outcome: PushOutcome = push_manual(
+            message=args.message,
+            push_type=args.push_type,
+            metadata=_parse_metadata_pairs(args.metadata),
+        )
+    except Exception:  # noqa: BLE001
+        return 0
+    _emit_push_status(outcome)
+    return 0
+
+
+def _cmd_push_commit(args: argparse.Namespace) -> int:
+    try:
+        repo = args.repo or str(Path.cwd())
+        outcome: PushOutcome = push_git_commit(repo)
+    except Exception:  # noqa: BLE001
+        return 0
+    _emit_push_status(outcome)
+    return 0
+
+
+def _cmd_push_test(args: argparse.Namespace) -> int:
+    try:
+        outcome: PushOutcome = push_test_pass(
+            suite_name=args.suite,
+            duration=args.duration,
+            test_count=args.count,
+            runner=args.runner,
+        )
+    except Exception:  # noqa: BLE001
+        return 0
+    _emit_push_status(outcome)
+    return 0
+
+
+def _emit_push_status(outcome: PushOutcome) -> None:
+    """Write one short status line to stdout for interactive feedback.
+
+    Stays quiet when the bridge is disabled so the CLI honors the
+    'never break a workflow' rule — users who install a git hook
+    before configuring a key should see nothing at all.
+    """
+    if outcome.status == "disabled":
+        return
+    if outcome.status == "sent":
+        suffix = ""
+        if outcome.memory_id:
+            suffix = " ({})".format(outcome.memory_id)
+        sys.stdout.write(
+            "pushed {}{}\n".format(outcome.event_type, suffix)
+        )
+        return
+    if outcome.status == "skipped":
+        sys.stdout.write(
+            "skipped {}: {}\n".format(outcome.event_type, outcome.reason)
+        )
+        return
+    if outcome.status == "failed":
+        sys.stdout.write(
+            "push {} failed: {}\n".format(
+                outcome.event_type, outcome.reason
+            )
+        )
 
 
 # ----------------------------------------------------------------------
@@ -228,6 +406,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         return _cmd_status(ns)
     if ns.command == "install":
         return _cmd_install(ns)
+    if ns.command == "push":
+        return _cmd_push(ns)
+    if ns.command == "push-commit":
+        return _cmd_push_commit(ns)
+    if ns.command == "push-test":
+        return _cmd_push_test(ns)
 
     parser.print_help()
     return 0
