@@ -252,14 +252,19 @@ class EngramRecallEngine:
             except Exception as e:
                 logger.debug(f"Hash rebuild check skipped: {e}")
 
-        # Pre-warm hot tier from recent Qdrant data if it's empty
+        # Pre-warm hot tier from recent Qdrant data if it's empty.
+        # Scroll limit capped at 50 (or 20% of hot_tier_max_size, whichever is
+        # smaller) so small benchmarks don't saturate the hot tier and starve
+        # the hash tier of any attribution (task #67). Medium corpora still get
+        # a warm start via promotion during the first handful of searches.
+        prewarm_limit = min(50, max(1, int(self.config.hot_tier_max_size * 0.2)))
         if self.hot_tier.size == 0 and self.hasher.size > 0:
             try:
                 # Scroll recent memories to seed the hot tier
                 resp = await self._http.post(
                     f"{self.config.qdrant_url}/collections/{self.config.collection}/points/scroll",
                     json={
-                        "limit": min(100, self.config.hot_tier_max_size),
+                        "limit": prewarm_limit,
                         "with_payload": True,
                         "with_vector": True,
                         "order_by": [{"key": "created_at", "direction": "desc"}],
@@ -668,31 +673,52 @@ class EngramRecallEngine:
                 retrieval_probability=retrieval_p,
             ))
 
-        # If hot-tier gave us enough, return early
-        if len(results) >= top_k:
-            logger.debug(
-                f"Hot-tier hit: {len(results)} results for '{query[:50]}'"
-            )
-            return results[:top_k]
-
-        remaining = top_k - len(results)
-        seen_ids = {r.doc_id for r in results}
+        # Do NOT early-return from hot tier. Hot tier results don't have a
+        # doc_vector attached, so trusting ACT-R-weighted ranking without a
+        # vector-tier cross-check degrades R@1 when ACT-R and cosine disagree.
+        # Always run hash + vector so the final re-rank sees all candidates.
+        remaining = top_k
+        hot_ids = {r.doc_id for r in results}
+        seen_ids = set(hot_ids)
 
         # ── TIER 2: Multi-Head Hash Index ──
+        # Run hash lookup across ALL candidate IDs — do NOT subtract hot-seen
+        # ids. When a candidate overlaps with a hot result we REPLACE the hot
+        # entry with the hash entry: hash carries doc_vector so the final
+        # cosine re-rank operates on real similarity, and the result earns
+        # correct "hash" tier attribution instead of masquerading as "hot"
+        # (task #67 — hash was dominated by hot's first-seen priority).
         candidate_ids = self.hasher.search_candidates(query_vector)
-
-        # Filter out already-seen IDs
-        candidate_ids = [
-            cid for cid in candidate_ids if cid not in seen_ids
-        ]
 
         if candidate_ids:
             # Fetch candidate vectors from Qdrant by ID
             hash_results = await self._fetch_and_rerank(
-                query_vector, candidate_ids, remaining, category
+                query_vector, candidate_ids, max(remaining, len(candidate_ids)), category
             )
 
+            hash_by_id = {r.doc_id: r for r in hash_results}
+
+            # Replace any hot-tier result that also appeared in hash candidates
+            # with the hash version — hash carries the real doc_vector and has
+            # a genuine retrieval signal, so it wins attribution.
+            for i, r in enumerate(results):
+                if r.doc_id in hash_by_id:
+                    hash_result = hash_by_id.pop(r.doc_id)
+                    hash_result.tier = "hash"
+                    results[i] = hash_result
+
+                    self.hot_tier.upsert(
+                        doc_id=hash_result.doc_id,
+                        vector=hash_result.doc_vector if hash_result.doc_vector is not None else query_vector,
+                        content=hash_result.content,
+                        category=hash_result.category,
+                        metadata=hash_result.metadata,
+                    )
+
+            # Append remaining hash-only results (not already in hot)
             for result in hash_results:
+                if result.doc_id not in hash_by_id:
+                    continue  # Already consumed as a replacement above
                 result.tier = "hash"
                 results.append(result)
                 seen_ids.add(result.doc_id)

@@ -229,10 +229,11 @@ class TestMultiHeadHasher:
             os.unlink(path)
 
     def test_community_limits_enforced(self):
-        # Should clamp to community max
+        # Should clamp to community max (raised from 4/12 → 6/14 to match
+        # EngramConfig defaults — task #67 hash tier visibility fix).
         hasher = EngramMultiHeadHasher(dim=64, num_heads=16, hash_size=32, seed=42)
-        assert hasher.num_heads == 4   # Clamped from 16
-        assert hasher.hash_size == 12  # Clamped from 32
+        assert hasher.num_heads == 6   # Clamped from 16
+        assert hasher.hash_size == 14  # Clamped from 32
 
     def test_min_heads_search(self):
         hasher = EngramMultiHeadHasher(dim=64, num_heads=4, hash_size=8, seed=42)
