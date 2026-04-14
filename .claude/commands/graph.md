@@ -1,31 +1,39 @@
 ---
-description: Generate an interactive visual graph of your memories using graphify
-argument-hint: "[--user <id>]"
+description: Generate an interactive visual graph of your memories. Powered by graphify (github.com/safishamsi/graphify, MIT).
+argument-hint: "[--limit <N>]"
 allowed-tools: Bash, Read
 ---
 
-Generate an interactive vis.js graph of the Engram memory store by handing
-the memories off to the `graphify` CLI (https://github.com/safishamsi/graphify).
+Generate an interactive vis.js graph of the Engram memory store by
+exporting every memory from the live engram container and handing it
+off to the vendored graphify library under `vendor/graphify/`. No
+extra PyPI install is required — graphify ships in-tree.
 
 Arguments: $ARGUMENTS
 
 Steps:
 
-1. Verify graphify is installed. Run `graphify --version`. If it is missing
-   or exits non-zero, tell the user:
-   `graphify is not installed. Run: pip install graphifyy` and stop.
-2. Create a fresh input directory at
-   `~/.engram/graph-input-$(date +%Y%m%d-%H%M%S)` and remember the path.
-3. From the repo root, run the export helper into that directory:
-   `python scripts/export_memories_for_graph.py --output <input-dir> $ARGUMENTS`.
-   If the script prints that the graph is empty, stop and tell the user to
-   store some memories first.
-4. Invoke graphify on the input directory from the repo root:
-   `graphify <input-dir>`. This produces `graphify-out/graph.html` plus
-   `graph.json` and `obsidian/` under the current working directory.
-5. Report the absolute path to `graphify-out/graph.html` and offer to open
-   it (e.g. `xdg-open graphify-out/graph.html` on Linux). Do not open it
-   without confirmation.
+1. Confirm `$ANTHROPIC_API_KEY` is set. Graphify uses it for its
+   entity-extraction passes on larger corpora. If unset, tell the
+   user:
+   `ANTHROPIC_API_KEY is not set. export ANTHROPIC_API_KEY=... and re-run /graph`
+   and stop.
+2. Create a fresh output directory at
+   `~/.engram/graph-$(date +%Y%m%d-%H%M%S)` and remember the path as
+   `<OUT>`.
+3. From the repo root, run the driver:
+   `python3 scripts/engram_graph.py --output <OUT> $ARGUMENTS`.
+   The driver calls `scripts/export_memories_for_graph.py` internally
+   to pull memories out of Qdrant, then invokes
+   `graphify.build_from_json` / `cluster` / `to_html` / `to_json` from
+   `vendor/graphify/`.
+4. If the driver exits with code 3, the `agent-memory` collection was
+   empty — tell the user to store some memories first and stop.
+5. If the driver exits with code 1 or 2, surface the full stderr to
+   the user and stop.
+6. On success, report the absolute path to `<OUT>/graphify-out/graph.html`
+   and offer to open it (e.g. `xdg-open <OUT>/graphify-out/graph.html`
+   on Linux). Do not open it without confirmation.
 
-Do not modify the memory store. Do not invent fake memories. If any step
-fails, surface the exact stderr to the user and stop.
+Do not modify the memory store. Do not invent fake memories. The
+graph is read-only over the live engram Qdrant collection.
