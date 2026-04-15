@@ -4,12 +4,14 @@
 Pulls real memories from the running engram-memory container rather than
 the repo's local scratch database. Data flow:
 
-1. Memories + payloads come from Qdrant's REST `scroll` API on the live
-   collection (default: ``agent-memory`` at ``http://localhost:6333``).
-2. Graph edges come from ``docker exec engram-memory`` running a tiny
-   Kuzu query against ``/data/engram/graph.kuzu`` inside the container.
-   If docker exec fails or Kuzu has no edges, ``_edges.json`` is written
-   as ``[]`` and a warning is logged — export does not crash.
+1. Memories + vectors come from Qdrant's REST ``scroll`` API on the live
+   collection (default: ``agent-memory`` at ``http://localhost:6333``),
+   requesting ``with_vector=true`` so we get each point's embedding.
+2. Graph edges are built from Qdrant vector similarity: for each memory
+   we POST its vector to ``/collections/<c>/points/search`` and keep the
+   top K neighbors above ``--min-similarity``. This avoids contending
+   with the engram-memory container's exclusive Kuzu write lock and
+   uses the embeddings that already exist in the collection.
 
 Each memory point becomes one ``<id>.md`` file with YAML frontmatter and
 the memory content as the body. Fields that are absent from the payload
@@ -19,7 +21,7 @@ Usage:
     python scripts/export_memories_for_graph.py --output /tmp/engram-graph-input
     python scripts/export_memories_for_graph.py --output /tmp/out --limit 500
 
-Only stdlib is used (urllib, json, subprocess) — no new dependencies.
+Only stdlib is used (urllib, json) — no new dependencies.
 """
 
 from __future__ import annotations
@@ -27,7 +29,6 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -61,7 +62,7 @@ def _post_json(url: str, body: dict[str, Any], timeout: float = 15.0) -> dict[st
 
 
 def scroll_qdrant(
-    qdrant_url: str, collection: str, limit: int
+    qdrant_url: str, collection: str, limit: int, with_vector: bool = True
 ) -> list[dict[str, Any]]:
     """Page through every point in the collection using Qdrant scroll."""
     url = f"{qdrant_url.rstrip('/')}/collections/{collection}/points/scroll"
@@ -72,7 +73,7 @@ def scroll_qdrant(
         body: dict[str, Any] = {
             "limit": page_size,
             "with_payload": True,
-            "with_vector": False,
+            "with_vector": with_vector,
         }
         if offset is not None:
             body["offset"] = offset
@@ -159,88 +160,93 @@ def render_markdown(point: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-_KUZU_DUMP_SNIPPET = r"""
-import json, sys
-try:
-    import kuzu
-except Exception as e:
-    print(json.dumps({"__error__": f"kuzu import failed: {e}"}))
-    sys.exit(0)
+def _extract_vector(point: dict[str, Any]) -> tuple[Any, str | None]:
+    """Return (vector_payload, vector_name).
 
-edges = []
-try:
-    db = kuzu.Database("/data/engram/graph.kuzu", read_only=True)
-    conn = kuzu.Connection(db)
-    # Discover rel tables and dump every edge we can find.
-    try:
-        rel_rows = conn.execute("CALL show_tables() RETURN *;")
-        rel_tables = []
-        while rel_rows.has_next():
-            row = rel_rows.get_next()
-            # row order: id, name, type, ...
-            name = row[1] if len(row) > 1 else None
-            ttype = row[2] if len(row) > 2 else None
-            if name and ttype and str(ttype).upper().startswith("REL"):
-                rel_tables.append(str(name))
-    except Exception as e:
-        rel_tables = []
-    for table in rel_tables:
-        try:
-            q = f"MATCH (a)-[r:{table}]->(b) RETURN a, b, r LIMIT 100000;"
-            res = conn.execute(q)
-            while res.has_next():
-                row = res.get_next()
-                a, b, r = row[0], row[1], row[2]
-                def _id(node):
-                    if isinstance(node, dict):
-                        for k in ("id", "_id", "name"):
-                            if k in node:
-                                return node[k]
-                        return json.dumps(node, default=str, sort_keys=True)
-                    return str(node)
-                edge = {"type": table, "source": _id(a), "target": _id(b)}
-                if isinstance(r, dict):
-                    for k in ("weight", "count", "score"):
-                        if k in r:
-                            edge[k] = r[k]
-                edges.append(edge)
-        except Exception:
+    Qdrant returns either a raw list (single unnamed vector) or a dict
+    keyed by vector name (named vectors). For the named case we return
+    the (name, values) pair so search can target that name.
+    """
+    vec = point.get("vector")
+    if vec is None:
+        return None, None
+    if isinstance(vec, list):
+        return vec, None
+    if isinstance(vec, dict) and vec:
+        # Prefer "dense" if present, else first key deterministically.
+        name = "dense" if "dense" in vec else sorted(vec.keys())[0]
+        return vec[name], name
+    return None, None
+
+
+def build_similarity_edges(
+    qdrant_url: str,
+    collection: str,
+    points: list[dict[str, Any]],
+    neighbors_per_node: int,
+    min_similarity: float,
+) -> tuple[list[dict[str, Any]], str | None]:
+    """For each point, find k nearest neighbors via Qdrant search.
+
+    Returns (edges, warning). Edges are de-duplicated (undirected) and
+    filtered by ``min_similarity``.
+    """
+    if not points:
+        return [], None
+
+    search_url = f"{qdrant_url.rstrip('/')}/collections/{collection}/points/search"
+    seen: set[tuple[str, str]] = set()
+    edges: list[dict[str, Any]] = []
+    known_ids = {str(p.get("id")) for p in points}
+
+    for point in points:
+        src_id = str(point.get("id"))
+        vector, vec_name = _extract_vector(point)
+        if vector is None:
             continue
-except Exception as e:
-    print(json.dumps({"__error__": f"kuzu query failed: {e}"}))
-    sys.exit(0)
 
-print(json.dumps(edges))
-"""
+        body: dict[str, Any] = {
+            "limit": neighbors_per_node + 1,  # +1 because self is usually in results
+            "with_payload": False,
+            "with_vector": False,
+        }
+        if vec_name is not None:
+            body["vector"] = {"name": vec_name, "vector": vector}
+        else:
+            body["vector"] = vector
 
+        try:
+            resp = _post_json(search_url, body)
+        except urllib.error.HTTPError as e:
+            return [], (
+                f"Qdrant search failed: HTTP {e.code} — "
+                f"{e.read().decode('utf-8', 'replace')[:300]}"
+            )
+        except urllib.error.URLError as e:
+            return [], f"Could not reach Qdrant at {qdrant_url}: {e.reason}"
 
-def dump_edges_via_docker(container: str) -> tuple[list[dict[str, Any]], str | None]:
-    """Return (edges, warning). warning is None on success."""
-    try:
-        proc = subprocess.run(
-            ["docker", "exec", "-i", container, "python", "-c", _KUZU_DUMP_SNIPPET],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except FileNotFoundError:
-        return [], "docker CLI not found on host — skipping edge export"
-    except subprocess.TimeoutExpired:
-        return [], "docker exec for edge dump timed out — skipping edges"
-    if proc.returncode != 0:
-        return [], f"docker exec failed (rc={proc.returncode}): {proc.stderr.strip()[:300]}"
-    out = proc.stdout.strip()
-    if not out:
-        return [], "docker exec produced no output for edge dump"
-    try:
-        parsed = json.loads(out.splitlines()[-1])
-    except json.JSONDecodeError as e:
-        return [], f"edge dump returned non-JSON: {e}"
-    if isinstance(parsed, dict) and "__error__" in parsed:
-        return [], f"kuzu edge dump error: {parsed['__error__']}"
-    if not isinstance(parsed, list):
-        return [], "edge dump returned unexpected shape"
-    return parsed, None
+        results = resp.get("result") or []
+        for hit in results:
+            tgt_id = str(hit.get("id"))
+            if tgt_id == src_id:
+                continue
+            if tgt_id not in known_ids:
+                continue
+            score = float(hit.get("score", 0.0))
+            if score < min_similarity:
+                continue
+            key = tuple(sorted((src_id, tgt_id)))
+            if key in seen:
+                continue
+            seen.add(key)
+            edges.append({
+                "source": key[0],
+                "target": key[1],
+                "weight": score,
+                "type": "similarity",
+            })
+
+    return edges, None
 
 
 def main() -> int:
@@ -265,14 +271,28 @@ def main() -> int:
     parser.add_argument(
         "--container",
         default="engram-memory",
-        help="Name of the engram Docker container (for edge dump)",
+        help="Name of the engram Docker container (kept for CLI compatibility)",
+    )
+    parser.add_argument(
+        "--min-similarity",
+        type=float,
+        default=0.5,
+        help="Minimum cosine similarity to emit a similarity edge",
+    )
+    parser.add_argument(
+        "--neighbors-per-node",
+        type=int,
+        default=5,
+        help="Max nearest neighbors queried per memory",
     )
     args = parser.parse_args()
 
     out_dir = Path(args.output).expanduser().resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    points = scroll_qdrant(args.qdrant_url, args.collection, args.limit)
+    points = scroll_qdrant(
+        args.qdrant_url, args.collection, args.limit, with_vector=True
+    )
 
     if not points:
         (out_dir / "_edges.json").write_text("[]\n")
@@ -295,12 +315,21 @@ def main() -> int:
         (out_dir / name).write_text(render_markdown(point))
         written += 1
 
-    edges, edge_warning = dump_edges_via_docker(args.container)
+    edges, edge_warning = build_similarity_edges(
+        args.qdrant_url,
+        args.collection,
+        points,
+        neighbors_per_node=args.neighbors_per_node,
+        min_similarity=args.min_similarity,
+    )
     if edge_warning:
         print(f"[export] warning: {edge_warning}", file=sys.stderr)
     (out_dir / "_edges.json").write_text(json.dumps(edges, indent=2) + "\n")
 
-    print(f"[export] wrote {written} memories, {len(edges)} edges to {out_dir}")
+    print(
+        f"[export] {written} memories, {len(edges)} similarity edges "
+        f"(threshold={args.min_similarity}, k={args.neighbors_per_node}) → {out_dir}"
+    )
     return 0
 
 

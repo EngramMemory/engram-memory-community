@@ -75,7 +75,15 @@ def summarise(body: str, limit: int = 80) -> str:
     return first[: limit - 1].rstrip() + "\u2026"
 
 
-def run_exporter(output_dir: Path, limit: int, qdrant_url: str, collection: str, container: str) -> None:
+def run_exporter(
+    output_dir: Path,
+    limit: int,
+    qdrant_url: str,
+    collection: str,
+    container: str,
+    min_similarity: float,
+    neighbors_per_node: int,
+) -> None:
     script = REPO_ROOT / "scripts" / "export_memories_for_graph.py"
     cmd = [
         sys.executable,
@@ -90,6 +98,10 @@ def run_exporter(output_dir: Path, limit: int, qdrant_url: str, collection: str,
         str(limit),
         "--container",
         container,
+        "--min-similarity",
+        str(min_similarity),
+        "--neighbors-per-node",
+        str(neighbors_per_node),
     ]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.stdout:
@@ -133,13 +145,19 @@ def build_extraction(input_dir: Path) -> dict[str, Any]:
             src = str(e.get("source", ""))
             tgt = str(e.get("target", ""))
             if src in node_ids and tgt in node_ids:
-                edges.append({
+                edge_dict: dict[str, Any] = {
                     "source": src,
                     "target": tgt,
                     "relation": str(e.get("type", "related")),
                     "confidence": "EXTRACTED",
                     "source_file": "_edges.json",
-                })
+                }
+                if "weight" in e:
+                    try:
+                        edge_dict["weight"] = float(e["weight"])
+                    except (TypeError, ValueError):
+                        pass
+                edges.append(edge_dict)
 
     return {"nodes": nodes, "edges": edges}
 
@@ -151,6 +169,10 @@ def main() -> int:
     ap.add_argument("--qdrant-url", default="http://localhost:6333")
     ap.add_argument("--collection", default="agent-memory")
     ap.add_argument("--container", default="engram-memory")
+    ap.add_argument("--min-similarity", type=float, default=0.5,
+                    help="Minimum cosine similarity for similarity edges")
+    ap.add_argument("--neighbors-per-node", type=int, default=5,
+                    help="Max nearest neighbors queried per memory")
     ap.add_argument("--keep-input", action="store_true", help="Keep the exported markdown dir under <output>/input/")
     args = ap.parse_args()
 
@@ -162,7 +184,15 @@ def main() -> int:
     graphify_out.mkdir(parents=True, exist_ok=True)
 
     print(f"[engram-graph] exporting memories to {input_dir}", flush=True)
-    run_exporter(input_dir, args.limit, args.qdrant_url, args.collection, args.container)
+    run_exporter(
+        input_dir,
+        args.limit,
+        args.qdrant_url,
+        args.collection,
+        args.container,
+        args.min_similarity,
+        args.neighbors_per_node,
+    )
 
     extraction = build_extraction(input_dir)
     n_nodes = len(extraction["nodes"])
@@ -193,8 +223,9 @@ def main() -> int:
     print(f"[engram-graph] graph.html: {html_path}")
     print(f"[engram-graph] graph.json: {json_path}")
     print(
-        f"[engram-graph] {G.number_of_nodes()} nodes, {G.number_of_edges()} edges, "
-        f"{len(communities)} communities"
+        f"[engram-graph] {G.number_of_nodes()} nodes, "
+        f"{G.number_of_edges()} edges, "
+        f"{len(communities)} communities → {html_path}"
     )
     return 0
 
