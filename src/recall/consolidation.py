@@ -7,8 +7,7 @@ Three maintenance operations for memory hygiene:
   Librarian:  Discover cross-category connections
   Clustering: Group related memories into concept nodes
 
-Community Edition: Manual-only, fixed thresholds, capped connections.
-Cloud Edition: Auto-scheduled, tunable, LLM-powered synthesis.
+All thresholds configurable via EngramConfig / environment variables.
 """
 
 import logging
@@ -23,12 +22,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("engram.consolidation")
 
-# Community Edition limits
-COMMUNITY_MAX_CONNECTIONS_PER_CALL = 3
-COMMUNITY_CONSOLIDATION_THRESHOLD = 0.95
-COMMUNITY_CLUSTER_MANUAL_ONLY = True
-
-
 class EngramConsolidator:
     """Memory maintenance: dedup, cross-linking, and concept clustering."""
 
@@ -37,18 +30,10 @@ class EngramConsolidator:
 
     # ─── Janitor: Merge Near-Duplicates ──────────────────────────────
 
-    async def consolidate(self, threshold: float = 0.95) -> Dict:
-        """Find and merge near-duplicate memories.
-
-        Community: threshold fixed at 0.95.
-        Cloud: tunable 0.8-1.0 + LLM-powered merge summaries.
-        """
-        if threshold != COMMUNITY_CONSOLIDATION_THRESHOLD:
-            logger.warning(
-                f"Community Edition uses fixed threshold {COMMUNITY_CONSOLIDATION_THRESHOLD}. "
-                f"Upgrade to Engram Cloud for tunable dedup thresholds (0.8-1.0)."
-            )
-        threshold = COMMUNITY_CONSOLIDATION_THRESHOLD
+    async def consolidate(self, threshold: float = None) -> Dict:
+        """Find and merge near-duplicate memories."""
+        if threshold is None:
+            threshold = self.engine.config.duplicate_threshold
 
         # Scroll all points from Qdrant
         all_points = await self._scroll_all_points()
@@ -157,18 +142,10 @@ class EngramConsolidator:
 
     # ─── Librarian: Cross-Category Connections ───────────────────────
 
-    async def connect(self, doc_id: str, max_connections: int = 3) -> Dict:
-        """Discover cross-category connections for a memory.
-
-        Community: max 3 connections per call.
-        Cloud: unlimited + bidirectional weighted traversal.
-        """
-        if max_connections > COMMUNITY_MAX_CONNECTIONS_PER_CALL:
-            logger.warning(
-                f"Community Edition supports max {COMMUNITY_MAX_CONNECTIONS_PER_CALL} connections per call. "
-                f"Upgrade to Engram Cloud for unlimited cross-linking with weighted traversal."
-            )
-        max_connections = min(max_connections, COMMUNITY_MAX_CONNECTIONS_PER_CALL)
+    async def connect(self, doc_id: str, max_connections: int = None) -> Dict:
+        """Discover cross-category connections for a memory."""
+        if max_connections is None:
+            max_connections = self.engine.config.max_connections_per_call
 
         if not self.engine.graph:
             return {"error": "Graph layer not available", "connections_created": 0}
@@ -255,11 +232,7 @@ class EngramConsolidator:
     # ─── Shadow Clustering ───────────────────────────────────────────
 
     async def shadow_cluster(self, min_cluster_size: int = 5) -> Dict:
-        """Group related memories into concept nodes using HDBSCAN.
-
-        Community: manual trigger only.
-        Cloud: auto-scheduled every 6h + LLM concept synthesis.
-        """
+        """Group related memories into concept nodes using HDBSCAN."""
         if not self.engine.graph:
             return {"error": "Graph layer not available"}
 

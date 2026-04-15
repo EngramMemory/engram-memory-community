@@ -9,8 +9,7 @@ Each "head" is an independent random projection that maps the
 simultaneously — the union of matched buckets forms the candidate
 set. Collisions on one head are triangulated away by the others.
 
-Community Edition: 4 heads, 12-bit hash.
-Cloud Edition: 8+ heads, 16-bit hash, adaptive sizing, collision analytics.
+Defaults: 6 heads, 14-bit hash (configurable via EngramConfig).
 
 Inspired by:
 - DeepSeek Engram (Jan 2026) — Multi-Head Conditional Memory
@@ -30,12 +29,8 @@ from matryoshka import get_fast_slice, SLICE_FAST
 
 logger = logging.getLogger("engram.hasher")
 
-# Community Edition limits
-# Raised from 4/12 → 6/14 to match EngramConfig defaults. The hasher was
-# silently clamping the configured values, leaving the hash tier structurally
-# unable to contribute to results (task #67 — hash tier 0% utilization).
-COMMUNITY_MAX_HEADS = 6
-COMMUNITY_MAX_HASH_SIZE = 14
+DEFAULT_HEADS = 6
+DEFAULT_HASH_SIZE = 14
 
 
 @dataclass
@@ -75,8 +70,8 @@ class EngramMultiHeadHasher:
     def __init__(
         self,
         dim: int = SLICE_FAST,
-        num_heads: int = COMMUNITY_MAX_HEADS,
-        hash_size: int = COMMUNITY_MAX_HASH_SIZE,
+        num_heads: int = DEFAULT_HEADS,
+        hash_size: int = DEFAULT_HASH_SIZE,
         seed: Optional[int] = None
     ):
         """
@@ -84,30 +79,13 @@ class EngramMultiHeadHasher:
             dim: Dimension of input vectors (should match Matryoshka fast-slice).
             num_heads: Number of independent hash tables.
                        More heads = fewer false positives, more memory.
-                       Community: max 4. Cloud: 8+.
             hash_size: Number of bits per hash signature.
                        More bits = fewer collisions per bucket, but sparser tables.
-                       Community: max 12. Cloud: 16+.
             seed: Random seed for reproducible projections.
         """
-        # Enforce community limits
         self.dim = dim
-        self.num_heads = min(num_heads, COMMUNITY_MAX_HEADS)
-        self.hash_size = min(hash_size, COMMUNITY_MAX_HASH_SIZE)
-
-        if num_heads > COMMUNITY_MAX_HEADS:
-            logger.warning(
-                f"Community Edition supports max {COMMUNITY_MAX_HEADS} heads. "
-                f"Requested {num_heads}, clamped to {COMMUNITY_MAX_HEADS}. "
-                f"Upgrade to Engram Cloud for 8+ heads with auto-tuning."
-            )
-
-        if hash_size > COMMUNITY_MAX_HASH_SIZE:
-            logger.warning(
-                f"Community Edition supports max {COMMUNITY_MAX_HASH_SIZE}-bit hash. "
-                f"Requested {hash_size}, clamped to {COMMUNITY_MAX_HASH_SIZE}. "
-                f"Upgrade to Engram Cloud for 16+ bit adaptive hashing."
-            )
+        self.num_heads = num_heads
+        self.hash_size = hash_size
 
         # Initialize random projection matrices
         rng = np.random.RandomState(seed)

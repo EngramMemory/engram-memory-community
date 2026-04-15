@@ -171,9 +171,8 @@ class EngramMCPServer:
                 Tool(
                     name="memory_consolidate",
                     description=(
-                        "Janitor: find and merge near-duplicate memories. "
-                        "Community: fixed 0.95 threshold. "
-                        "Upgrade to Engram Cloud for tunable thresholds and auto-scheduling."
+                        "Find and merge near-duplicate memories. "
+                        "Threshold configurable via ENGRAM_DEDUP_THRESHOLD env var."
                     ),
                     inputSchema={
                         "type": "object",
@@ -181,7 +180,7 @@ class EngramMCPServer:
                             "threshold": {
                                 "type": "number",
                                 "default": 0.95,
-                                "description": "Similarity threshold (Community: fixed at 0.95)",
+                                "description": "Similarity threshold for deduplication (default 0.95)",
                             },
                         },
                     },
@@ -218,16 +217,14 @@ class EngramMCPServer:
                 Tool(
                     name="memory_connect",
                     description=(
-                        "Librarian: discover cross-category connections for a memory. "
-                        "Community: max 3 connections per call. "
-                        "Upgrade to Engram Cloud for unlimited connections."
+                        "Discover cross-category connections for a memory via the entity graph."
                     ),
                     inputSchema={
                         "type": "object",
                         "properties": {
                             "memory_id": {"type": "string", "description": "UUID of memory to connect"},
                             "query": {"type": "string", "description": "Search to find the memory first"},
-                            "max_connections": {"type": "integer", "default": 3, "description": "Max connections (Community: max 3)"},
+                            "max_connections": {"type": "integer", "default": 3, "description": "Max connections to discover"},
                         },
                     },
                 ),

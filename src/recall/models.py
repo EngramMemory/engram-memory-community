@@ -4,9 +4,29 @@ Engram Memory — Data Models
 Shared data structures for the recall engine.
 """
 
+import os
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, List
+
+
+def _env_int(key: str, default: int) -> int:
+    val = os.getenv(key)
+    if val is not None:
+        try:
+            return int(val)
+        except ValueError:
+            pass
+    return default
+
+def _env_float(key: str, default: float) -> float:
+    val = os.getenv(key)
+    if val is not None:
+        try:
+            return float(val)
+        except ValueError:
+            pass
+    return default
 
 
 @dataclass
@@ -59,7 +79,8 @@ class EngramConfig:
     """
     Configuration for the Engram Recall Engine.
 
-    All defaults are tuned for Community Edition on a single machine.
+    All parameters can be overridden via environment variables.
+    Defaults are tuned for single-machine use.
     """
     # Qdrant connection
     qdrant_url: str = "http://localhost:6333"
@@ -76,35 +97,35 @@ class EngramConfig:
     full_dim: int = 768       # For final re-ranking
 
     # Multi-Head Hasher
-    hasher_num_heads: int = 6       # Community: max 6 (more heads = more candidates)
-    hasher_hash_size: int = 14      # Community: max 14 bits (finer buckets)
+    hasher_num_heads: int = field(default_factory=lambda: _env_int("ENGRAM_HASH_HEADS", 6))
+    hasher_hash_size: int = field(default_factory=lambda: _env_int("ENGRAM_HASH_BITS", 14))
     hasher_seed: int = 42           # Deterministic projections
     hasher_persist_path: str = ".engram/hash_index.pkl"
 
     # Hot-Tier Cache
-    hot_tier_max_size: int = 1000   # Community: max 1000
+    hot_tier_max_size: int = field(default_factory=lambda: _env_int("ENGRAM_HOT_TIER_MAX", 1000))
     hot_tier_decay_rate: float = 0.1
     hot_tier_similarity_threshold: float = 0.55
     hot_tier_persist_path: str = ".engram/hot_tier.json"
     hot_tier_sweep_interval: float = 3600.0  # Decay sweep every hour
 
-    # ACT-R parameters (Community: fixed defaults. Cloud: adaptive per-user.)
+    # ACT-R parameters
     actr_decay_param: float = 0.5           # d in B_i = ln(Σ t_j^{-d})
     actr_retrieval_threshold: float = -0.5  # τ in Boltzmann gate
     actr_noise_param: float = 0.2           # s in Boltzmann gate
-    actr_max_timestamps: int = 50           # cap per memory (Community: 50, Cloud: unlimited)
+    actr_max_timestamps: int = field(default_factory=lambda: _env_int("ENGRAM_ACTR_MAX_TIMESTAMPS", 50))
 
-    # Graph layer (Community: 500 entities, 1-hop. Cloud: unlimited, multi-hop.)
+    # Graph layer
     graph_enabled: bool = True
     graph_db_path: str = ".engram/graph.kuzu"
-    graph_max_hops: int = 1
-    graph_max_entities: int = 500
+    graph_max_hops: int = field(default_factory=lambda: _env_int("ENGRAM_GRAPH_MAX_HOPS", 1))
+    graph_max_entities: int = field(default_factory=lambda: _env_int("ENGRAM_GRAPH_MAX_ENTITIES", 500))
     graph_spreading_weight: float = 0.15
 
-    # Consolidation (Community: manual-only. Cloud: auto-scheduled.)
+    # Consolidation
     consolidation_enabled: bool = True
-    duplicate_threshold: float = 0.95
-    max_connections_per_call: int = 3
+    duplicate_threshold: float = field(default_factory=lambda: _env_float("ENGRAM_DEDUP_THRESHOLD", 0.95))
+    max_connections_per_call: int = field(default_factory=lambda: _env_int("ENGRAM_MAX_CONNECTIONS", 3))
 
     # Recall behavior
     auto_recall: bool = True

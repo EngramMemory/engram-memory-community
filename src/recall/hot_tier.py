@@ -10,8 +10,8 @@ Combined with stability-modulated decay and Boltzmann retrieval
 probability for stochastic recall. This is the published cognitive
 science model of human memory retrieval — no competitor does this.
 
-Community Edition: Max 1000 entries, 50 timestamps, fixed d=0.5.
-Cloud Edition: Unlimited, per-category adaptive d, analytics.
+Defaults: 1000 entries, 50 timestamps, d=0.5.
+All configurable via EngramConfig / environment variables.
 """
 
 import time
@@ -28,10 +28,9 @@ from matryoshka import cosine_similarity, normalize
 
 logger = logging.getLogger("engram.hot_tier")
 
-# Community Edition limits
-COMMUNITY_MAX_SIZE = 1000
-COMMUNITY_MAX_TIMESTAMPS = 50
-COMMUNITY_DECAY_PARAM = 0.5
+DEFAULT_MAX_SIZE = 1000
+DEFAULT_MAX_TIMESTAMPS = 50
+DEFAULT_DECAY_PARAM = 0.5
 
 
 @dataclass
@@ -74,7 +73,7 @@ class HotMemory:
             else:
                 timestamps = [
                     first + (last - first) * i / (hits - 1)
-                    for i in range(min(hits, COMMUNITY_MAX_TIMESTAMPS))
+                    for i in range(min(hits, DEFAULT_MAX_TIMESTAMPS))
                 ]
         else:
             timestamps = d["access_timestamps"]
@@ -118,42 +117,26 @@ class EngramHotTier:
     - Boltzmann retrieval probability — stochastic recall gate
     - Stability modulation — per-memory adaptive decay
 
-    Community Edition: 1000 entries, 50 timestamps, fixed d=0.5.
-    Cloud Edition: Unlimited, adaptive d per category, analytics.
+    Defaults: 1000 entries, 50 timestamps, d=0.5 (all configurable).
     """
 
     def __init__(
         self,
-        max_size: int = COMMUNITY_MAX_SIZE,
+        max_size: int = DEFAULT_MAX_SIZE,
         decay_rate: float = 0.1,  # Legacy param, kept for compat
         similarity_threshold: float = 0.65,
-        decay_param: float = COMMUNITY_DECAY_PARAM,
+        decay_param: float = DEFAULT_DECAY_PARAM,
         retrieval_threshold: float = -0.5,
         noise_param: float = 0.2,
-        max_timestamps: int = COMMUNITY_MAX_TIMESTAMPS,
+        max_timestamps: int = DEFAULT_MAX_TIMESTAMPS,
     ):
-        self.max_size = min(max_size, COMMUNITY_MAX_SIZE)
+        self.max_size = max_size
         self.decay_rate = decay_rate  # Legacy
         self.similarity_threshold = similarity_threshold
         self.decay_param = decay_param
         self.retrieval_threshold = retrieval_threshold
         self.noise_param = noise_param
-        self.max_timestamps = min(max_timestamps, COMMUNITY_MAX_TIMESTAMPS)
-
-        if max_size > COMMUNITY_MAX_SIZE:
-            logger.warning(
-                f"Community Edition supports max {COMMUNITY_MAX_SIZE} hot-tier entries. "
-                f"Requested {max_size}, clamped to {COMMUNITY_MAX_SIZE}. "
-                f"Upgrade to Engram Cloud for unlimited hot-tier with "
-                f"distributed sync and adaptive decay."
-            )
-
-        if max_timestamps > COMMUNITY_MAX_TIMESTAMPS:
-            logger.warning(
-                f"Community Edition supports max {COMMUNITY_MAX_TIMESTAMPS} timestamps per memory. "
-                f"Requested {max_timestamps}, clamped to {COMMUNITY_MAX_TIMESTAMPS}. "
-                f"Upgrade to Engram Cloud for unlimited timestamps with per-category adaptive decay."
-            )
+        self.max_timestamps = max_timestamps
 
         # Storage: doc_id -> HotMemory
         self._cache: Dict[str, HotMemory] = {}
@@ -491,7 +474,7 @@ class EngramHotTier:
             max_size=state["max_size"],
             decay_rate=state["decay_rate"],
             similarity_threshold=state.get("similarity_threshold", 0.65),
-            decay_param=state.get("decay_param", COMMUNITY_DECAY_PARAM),
+            decay_param=state.get("decay_param", DEFAULT_DECAY_PARAM),
             retrieval_threshold=state.get("retrieval_threshold", -0.5),
             noise_param=state.get("noise_param", 0.2),
         )
