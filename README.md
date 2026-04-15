@@ -122,6 +122,10 @@ If you've cloned the repo, `bash scripts/setup.sh` does the same thing plus auto
 **Claude Code:**
 ```bash
 claude mcp add engrammemory -s user --transport http http://localhost:8585/mcp
+
+# Install slash commands (/graph etc.)
+mkdir -p ~/.claude/commands
+docker cp engram-memory:/app/commands/. ~/.claude/commands/
 ```
 
 **Cursor, Windsurf, VS Code, Claude Desktop, Cline, Zed, and 9 other clients** — one command via [`install-mcp`](https://www.npmjs.com/package/install-mcp):

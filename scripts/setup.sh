@@ -316,9 +316,22 @@ if command -v claude &> /dev/null; then
     # Register at user scope (available across all projects)
     claude mcp add engrammemory -s user --transport http http://localhost:8585/mcp 2>/dev/null
     echo -e "${GREEN}Claude Code MCP registered (user scope, all projects)${NC}"
+
+    # Install slash commands (e.g. /graph) to user-level so they're
+    # available in every Claude Code session, not just this project.
+    mkdir -p "$HOME/.claude/commands"
+    if [ -d "$ENGRAM_REPO_DIR/.claude/commands" ]; then
+        cp "$ENGRAM_REPO_DIR/.claude/commands/"*.md "$HOME/.claude/commands/" 2>/dev/null
+        echo -e "${GREEN}Slash commands installed to ~/.claude/commands/${NC}"
+    elif docker ps --filter name=engram-memory --format '{{.Names}}' | grep -q engram-memory; then
+        # Extract from the running container if repo isn't cloned
+        docker cp engram-memory:/app/commands/. "$HOME/.claude/commands/" 2>/dev/null
+        echo -e "${GREEN}Slash commands extracted from container${NC}"
+    fi
 else
     echo -e "${YELLOW}Claude CLI not found — register manually:${NC}"
     echo "   claude mcp add engrammemory -s user --transport http http://localhost:8585/mcp"
+    echo "   mkdir -p ~/.claude/commands && docker cp engram-memory:/app/commands/. ~/.claude/commands/"
 fi
 
 # Success message
