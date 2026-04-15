@@ -64,17 +64,57 @@ class EngramClient:
     def health(self, timeout: Optional[float] = None) -> bool:
         """Cheap reachability probe. Returns True only on HTTP 2xx within
         ``timeout`` seconds. Any other outcome (timeout, 4xx, 5xx,
-        connection error) returns False. Never raises."""
+        connection error) returns False. Never raises.
+
+        Uses the public ``/health`` endpoint (no auth) so that "is the
+        API reachable?" is cleanly separated from "is my api_key valid?"
+        — we don't want a rotated key to look like an outage. The
+        authed ``/v1/health`` is available but requires a valid Bearer
+        token; we deliberately avoid it for reachability probes.
+        """
         t = timeout if timeout is not None else HEALTH_TIMEOUT
         try:
             with httpx.Client(timeout=t) as http:
-                resp = http.get(
-                    self._url("/v1/health"),
-                    headers=self._headers(),
-                )
+                resp = http.get(self._url("/health"))
                 return 200 <= resp.status_code < 300
         except (httpx.HTTPError, OSError):
             return False
+
+    def store_memory(
+        self,
+        content: str,
+        metadata: Optional[Dict[str, Any]] = None,
+        classification: Optional[str] = None,
+        collection: str = "agent-memory",
+        importance: float = 0.5,
+    ) -> Optional[Dict[str, Any]]:
+        """POST /v1/store. Returns the decoded response dict on success,
+        ``None`` on any failure. Never raises.
+
+        The cloud ``StoreRequest`` model uses ``text`` for the body and
+        ``category`` for classification, so we map here once and keep
+        the caller's vocabulary (``content`` / ``classification``)
+        closer to how we talk about events in the bridge layer.
+        """
+        payload: Dict[str, Any] = {
+            "text": content,
+            "category": classification or "other",
+            "importance": float(importance),
+            "metadata": metadata or {},
+            "collection": collection,
+        }
+        try:
+            with httpx.Client(timeout=self._timeout) as http:
+                resp = http.post(
+                    self._url("/v1/store"),
+                    headers=self._headers(),
+                    json=payload,
+                )
+                resp.raise_for_status()
+                body = resp.json()
+        except (httpx.HTTPError, OSError, ValueError):
+            return None
+        return body if isinstance(body, dict) else None
 
     def search(self, query: str, top_k: int) -> List[SearchResult]:
         """POST /v1/search. Returns [] on any failure. Never raises.
