@@ -67,6 +67,15 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Override the configured top_k.",
     )
+    pull.add_argument(
+        "--scope",
+        dest="scope",
+        default=None,
+        help=(
+            "Search scope: 'personal' (default) or 'team:<team_id>' "
+            "to pull from a shared team collection."
+        ),
+    )
 
     status = sub.add_parser(
         "status",
@@ -143,6 +152,55 @@ def _build_parser() -> argparse.ArgumentParser:
             "entries. Values are stored as strings."
         ),
     )
+    push.add_argument(
+        "--team",
+        dest="team",
+        action="append",
+        default=[],
+        metavar="TEAM_ID",
+        help=(
+            "Also share this memory with a team. Pass --team more "
+            "than once to fan out to several teams. The caller must "
+            "already be a member of each listed team."
+        ),
+    )
+
+    team = sub.add_parser(
+        "team",
+        help="Manage team scopes (list/create/add-member).",
+    )
+    team_sub = team.add_subparsers(dest="team_command")
+
+    team_sub.add_parser(
+        "list",
+        help="List teams the current api_key belongs to.",
+    )
+
+    team_create = team_sub.add_parser(
+        "create",
+        help="Create a new team and become its owner.",
+    )
+    team_create.add_argument("name", help="Team display name.")
+    team_create.add_argument(
+        "--slug",
+        dest="slug",
+        required=True,
+        help="URL slug (lowercase, 3-48 chars, hyphens allowed).",
+    )
+
+    team_add = team_sub.add_parser(
+        "add-member",
+        help="Add a user to a team. Caller must be owner or admin.",
+    )
+    team_add.add_argument("team_id", help="Target team_id (uuid).")
+    team_add.add_argument("user_id", help="Target user_id (uuid).")
+    team_add.add_argument(
+        "--role",
+        dest="role",
+        default="member",
+        choices=["member", "admin"],
+        help="Role to assign. Default: member.",
+    )
 
     push_commit = sub.add_parser(
         "push-commit",
@@ -189,6 +247,7 @@ def _cmd_pull(args: argparse.Namespace) -> int:
         outcome: PullOutcome = run_pull(
             project_override=args.project,
             top_k_override=args.top_k,
+            scope=getattr(args, "scope", None),
         )
     except Exception:  # noqa: BLE001 — belt-and-suspenders silence
         return 0
@@ -312,11 +371,38 @@ def _cmd_push(args: argparse.Namespace) -> int:
             message=args.message,
             push_type=args.push_type,
             metadata=_parse_metadata_pairs(args.metadata),
+            share_with=_team_scopes(getattr(args, "team", None)),
         )
     except Exception:  # noqa: BLE001
         return 0
     _emit_push_status(outcome)
     return 0
+
+
+def _team_scopes(teams: Optional[List[str]]) -> List[str]:
+    """Convert a list of bare team ids from ``--team`` into scope strings.
+
+    Users can type either ``abc-123`` or ``team:abc-123`` — both
+    should work, so we strip an optional leading prefix and add our
+    own. Duplicates collapse. Empty / whitespace entries drop.
+    """
+    if not teams:
+        return []
+    seen: List[str] = []
+    for raw in teams:
+        if not isinstance(raw, str):
+            continue
+        stripped = raw.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("team:"):
+            stripped = stripped[len("team:"):]
+        if not stripped:
+            continue
+        scope = "team:{}".format(stripped)
+        if scope not in seen:
+            seen.append(scope)
+    return seen
 
 
 def _cmd_push_commit(args: argparse.Namespace) -> int:
@@ -340,6 +426,101 @@ def _cmd_push_test(args: argparse.Namespace) -> int:
     except Exception:  # noqa: BLE001
         return 0
     _emit_push_status(outcome)
+    return 0
+
+
+def _cmd_team(args: argparse.Namespace) -> int:
+    """Dispatch ``engram-bridge team <sub>``. Every branch honors the
+    disabled chain — silent exit 0 when the bridge is off."""
+    sub = getattr(args, "team_command", None)
+    if sub == "list":
+        return _cmd_team_list()
+    if sub == "create":
+        return _cmd_team_create(args)
+    if sub == "add-member":
+        return _cmd_team_add_member(args)
+    # Bare `engram-bridge team` — print a short usage hint.
+    sys.stdout.write(
+        "team commands: list | create <name> --slug <slug> | "
+        "add-member <team_id> <user_id> [--role member|admin]\n"
+    )
+    return 0
+
+
+def _cmd_team_list() -> int:
+    cfg = load_config()
+    if not cfg.enabled:
+        return 0
+    try:
+        client = EngramClient(cfg)
+        teams = client.list_teams()
+    except Exception:  # noqa: BLE001
+        return 0
+    if teams is None:
+        sys.stdout.write("teams: api error\n")
+        return 0
+    if not teams:
+        sys.stdout.write("teams: (none)\n")
+        return 0
+    for t in teams:
+        if not isinstance(t, dict):
+            continue
+        team_id = str(t.get("id", ""))
+        name = str(t.get("name", ""))
+        slug = str(t.get("slug", ""))
+        role = str(t.get("role", ""))
+        member_count = t.get("member_count", "?")
+        sys.stdout.write(
+            "{}  {}  ({})  role={}  members={}\n".format(
+                team_id, name, slug, role, member_count
+            )
+        )
+    return 0
+
+
+def _cmd_team_create(args: argparse.Namespace) -> int:
+    cfg = load_config()
+    if not cfg.enabled:
+        return 0
+    name = (args.name or "").strip()
+    slug = (args.slug or "").strip().lower()
+    if not name or not slug:
+        sys.stdout.write("team create: name and --slug are required\n")
+        return 0
+    try:
+        client = EngramClient(cfg)
+        team = client.create_team(name=name, slug=slug)
+    except Exception:  # noqa: BLE001
+        return 0
+    if team is None:
+        sys.stdout.write("team create: api error (slug may be taken)\n")
+        return 0
+    team_id = str(team.get("id", ""))
+    sys.stdout.write("team created {} ({})\n".format(team_id, slug))
+    return 0
+
+
+def _cmd_team_add_member(args: argparse.Namespace) -> int:
+    cfg = load_config()
+    if not cfg.enabled:
+        return 0
+    team_id = (args.team_id or "").strip()
+    user_id = (args.user_id or "").strip()
+    role = (args.role or "member").strip().lower()
+    if not team_id or not user_id:
+        sys.stdout.write("team add-member: team_id and user_id are required\n")
+        return 0
+    try:
+        client = EngramClient(cfg)
+        result = client.add_team_member(team_id=team_id, user_id=user_id, role=role)
+    except Exception:  # noqa: BLE001
+        return 0
+    if result is None:
+        sys.stdout.write("team add-member: api error\n")
+        return 0
+    sys.stdout.write(
+        "team add-member ok team={} user={} role={}\n".format(team_id, user_id, role)
+    )
     return 0
 
 
@@ -412,6 +593,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return _cmd_push_commit(ns)
     if ns.command == "push-test":
         return _cmd_push_test(ns)
+    if ns.command == "team":
+        return _cmd_team(ns)
 
     parser.print_help()
     return 0

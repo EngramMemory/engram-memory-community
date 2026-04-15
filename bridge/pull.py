@@ -83,16 +83,37 @@ def _format_results(
     return "\n".join(lines)
 
 
+def _normalize_scope(raw: Optional[str]) -> str:
+    """Normalize a caller-supplied scope string.
+
+    Accepts ``None`` / ``"personal"`` (default) or ``"team:<id>"``. An
+    invalid string collapses to ``"personal"`` rather than raising —
+    the bridge never breaks a workflow, so bad input falls back to
+    the safe default.
+    """
+    if not raw:
+        return "personal"
+    value = raw.strip()
+    if not value or value == "personal":
+        return "personal"
+    if value.startswith("team:") and len(value) > len("team:"):
+        return value
+    return "personal"
+
+
 def run_pull(
     project_override: Optional[str] = None,
     top_k_override: Optional[int] = None,
     config: Optional[BridgeConfig] = None,
     project: Optional[ProjectContext] = None,
+    scope: Optional[str] = None,
 ) -> PullOutcome:
     """Execute the pull and return a ``PullOutcome``.
 
     Never raises. Never writes to stdout. Callers (the CLI) decide what
-    to do with ``outcome.output``.
+    to do with ``outcome.output``. ``scope`` forwards Wave 3's
+    ``scope`` param to ``/v1/search``; invalid values collapse to
+    ``"personal"``.
     """
     logger = _get_logger()
     cfg = config or load_config()
@@ -114,6 +135,7 @@ def run_pull(
     query = proj.build_query()
     if project_override and project_override not in query:
         query = "{}: {}".format(project_override, query)
+    effective_scope = _normalize_scope(scope)
 
     client = EngramClient(cfg)
 
@@ -131,7 +153,9 @@ def run_pull(
         )
 
     try:
-        results = client.search_raw(query=query, top_k=top_k)
+        results = client.search_raw(
+            query=query, top_k=top_k, scope=effective_scope
+        )
     except httpx.HTTPStatusError as exc:
         logger.warning(
             "pull failed: HTTP %s from %s",

@@ -29,7 +29,7 @@ import subprocess
 from dataclasses import dataclass, field
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from .client import EngramClient
 from .config import BridgeConfig, load_config, log_path
@@ -193,6 +193,7 @@ def _push(
     config: Optional[BridgeConfig] = None,
     project: Optional[ProjectContext] = None,
     cwd: Optional[Path] = None,
+    share_with: Optional[List[str]] = None,
 ) -> PushOutcome:
     """Shared send path: check disabled, stamp metadata, POST store."""
     cfg, proj = _load_cfg_and_project(config, project, cwd)
@@ -206,11 +207,13 @@ def _push(
     for key, value in _project_metadata(proj).items():
         stamped.setdefault(key, value)
 
-    payload = {
+    payload: Dict[str, Any] = {
         "content": content,
         "metadata": stamped,
         "classification": event_type,
     }
+    if share_with:
+        payload["share_with"] = list(share_with)
 
     client = EngramClient(cfg)
     try:
@@ -218,6 +221,7 @@ def _push(
             content=content,
             metadata=stamped,
             classification=event_type,
+            share_with=share_with,
         )
     except Exception as exc:  # noqa: BLE001 — belt-and-suspenders
         return _failed_outcome(
@@ -318,6 +322,7 @@ def push_manual(
     metadata: Optional[Dict[str, Any]] = None,
     config: Optional[BridgeConfig] = None,
     project: Optional[ProjectContext] = None,
+    share_with: Optional[List[str]] = None,
 ) -> PushOutcome:
     """Push a hand-typed milestone or note.
 
@@ -325,6 +330,12 @@ def push_manual(
     mark "I just finished X" without any git or test context. A blank
     message short-circuits to ``skipped`` rather than writing an empty
     memory.
+
+    ``share_with`` is an optional list of ``"team:<team_id>"`` scope
+    strings. When present, the cloud API fans the write out to each
+    team's Qdrant collection in addition to the caller's personal
+    collection — every team in the list is validated for membership
+    server-side, so an unauthorized entry fails the whole push.
     """
     text = (message or "").strip()
     if not text:
@@ -340,6 +351,7 @@ def push_manual(
         metadata=md,
         config=config,
         project=project,
+        share_with=share_with,
     )
 
 
