@@ -1,0 +1,54 @@
+{
+  "name": "@engram/sdk",
+  "version": "0.1.0",
+  "description": "Official TypeScript SDK for the Engram Memory API — zero-dependency, works in Node 18+, browsers, Cloudflare Workers, Deno, and Bun.",
+  "license": "MIT",
+  "homepage": "https://engrammemory.ai",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/engram-memory/engram-memory-community.git",
+    "directory": "sdks/typescript"
+  },
+  "keywords": [
+    "engram",
+    "memory",
+    "vector",
+    "semantic-search",
+    "ai",
+    "llm",
+    "rag",
+    "agent"
+  ],
+  "type": "module",
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/cjs/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc && tsc --module commonjs --moduleResolution node --outDir dist/cjs",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/node": "^20.11.0"
+  }
+}

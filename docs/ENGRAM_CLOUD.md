@@ -1,6 +1,6 @@
 # Engram Cloud
 
-When you need more than basic CRUD — deduplication, compression, lifecycle management, multi-agent isolation, or analytics — Engram Cloud adds enterprise intelligence on top of your self-hosted storage.
+When you need more than what runs locally — auto-scheduling, LLM-powered entity extraction, multi-agent isolation, or analytics — Engram Cloud adds enterprise intelligence on top of your self-hosted storage.
 
 **Your Qdrant stays yours.** Engram Cloud processes vectors in transit and stores nothing unless you explicitly opt into overflow storage.
 
@@ -11,13 +11,19 @@ When you need more than basic CRUD — deduplication, compression, lifecycle man
 | Store / search / recall / forget | Yes | Yes |
 | Auto-recall + auto-capture | Yes | Yes |
 | Category detection | Yes | Yes |
-| Deduplication | — | Yes |
-| Memory lifecycle (decay + pruning) | — | Yes |
-| TurboQuant compression (6x) | — | Yes |
-| Multi-agent isolation | — | Yes |
-| Analytics dashboard | — | Yes |
-| Batch operations | — | Yes |
-| Overflow storage | — | Yes (opt-in) |
+| Three-tier recall (hot/hash/vector) | Yes | Yes |
+| Knowledge graph (Kuzu) | Yes | Yes |
+| Feedback loop (PREFERRED_OVER) | Yes | Yes |
+| Deduplication | Manual, configurable threshold | Auto-scheduled + LLM merge summaries |
+| Cross-linking (memory_connect) | Configurable max connections | Unlimited + bidirectional weighted traversal |
+| Entity extraction | Regex-based (~70% coverage) | LLM-powered NER (full coverage) |
+| Graph traversal | Configurable hops (default 1) | Multi-hop spreading activation |
+| Concept clustering | Manual trigger (HDBSCAN) | Auto-scheduled every 6h + LLM synthesis |
+| TurboQuant compression (6x) | No | Yes |
+| Multi-agent isolation | No | Yes |
+| Analytics dashboard | No | Yes |
+| Batch operations | No | Yes |
+| Overflow storage | No | Yes (opt-in) |
 
 ## Migration
 

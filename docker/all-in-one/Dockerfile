@@ -99,6 +99,10 @@ COPY docker/mcp/entrypoint.py /app/mcp_entrypoint.py
 COPY docker/all-in-one/init.sh /app/init.sh
 RUN chmod +x /app/init.sh
 
+# Slash commands — shipped inside the image so users can extract them
+# via: docker cp engram-memory:/app/commands/ ~/.claude/commands/
+COPY .claude/commands/ /app/commands/
+
 # s6 service definitions: Qdrant + FastEmbed + MCP HTTP server, all longrun
 COPY docker/all-in-one/services.d /etc/s6-overlay/s6-rc.d
 RUN mkdir -p /etc/s6-overlay/s6-rc.d/user/contents.d && \

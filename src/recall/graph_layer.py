@@ -4,8 +4,8 @@ Engram Memory — Knowledge Graph Layer
 Embedded Kuzu graph for entity tracking, spreading activation,
 and co-retrieval patterns. No server, no network — runs locally.
 
-Community Edition: 500 entities, 1-hop traversal, 10 connections per query.
-Cloud Edition: Unlimited entities, multi-hop, LLM-powered NER.
+Defaults: 500 entities, 1-hop traversal, 10 connections per query.
+All configurable via EngramConfig / environment variables.
 """
 
 import logging
@@ -19,10 +19,9 @@ import kuzu
 
 logger = logging.getLogger("engram.graph")
 
-# Community Edition limits
-COMMUNITY_MAX_ENTITIES = 500
-COMMUNITY_MAX_HOPS = 1
-COMMUNITY_MAX_CONNECTIONS_PER_QUERY = 10
+DEFAULT_MAX_ENTITIES = 500
+DEFAULT_MAX_HOPS = 1
+DEFAULT_MAX_CONNECTIONS_PER_QUERY = 10
 
 
 # ─── Entity Extraction (regex, no LLM) ──────────────────────────────
@@ -31,8 +30,7 @@ def extract_entities(text: str) -> List[Tuple[str, str]]:
     """Extract entities from text using regex patterns.
 
     Returns list of (entity_name, entity_type) tuples.
-    Community: regex-based (covers ~70% of entities).
-    Cloud: LLM-powered NER for full coverage.
+    Uses regex-based extraction (covers ~70% of entities).
     """
     entities = []
     seen = set()
@@ -155,17 +153,13 @@ class EngramGraphLayer:
         except Exception as e:
             logger.debug(f"Memory node upsert failed: {e}")
 
-    def add_entity_mentions(self, doc_id: str, entities: List[Tuple[str, str]]):
+    def add_entity_mentions(self, doc_id: str, entities: List[Tuple[str, str]], max_entities: int = DEFAULT_MAX_ENTITIES):
         """Add Entity nodes and MENTIONS edges from a memory."""
-        if self._entity_count >= COMMUNITY_MAX_ENTITIES:
-            logger.warning(
-                f"Community Edition supports max {COMMUNITY_MAX_ENTITIES} entity nodes. "
-                f"Upgrade to Engram Cloud for unlimited entities with LLM-powered NER."
-            )
+        if self._entity_count >= max_entities:
             return
 
         for name, etype in entities:
-            if self._entity_count >= COMMUNITY_MAX_ENTITIES:
+            if self._entity_count >= max_entities:
                 break
             try:
                 self.conn.execute(
@@ -209,14 +203,6 @@ class EngramGraphLayer:
         self, doc_id: str, max_hops: int = 1, limit: int = 10
     ) -> List[str]:
         """Get memory IDs related to the given memory via graph traversal."""
-        if max_hops > COMMUNITY_MAX_HOPS:
-            logger.warning(
-                f"Community Edition supports max {COMMUNITY_MAX_HOPS}-hop traversal. "
-                f"Upgrade to Engram Cloud for deep multi-hop spreading activation."
-            )
-        max_hops = min(max_hops, COMMUNITY_MAX_HOPS)
-        limit = min(limit, COMMUNITY_MAX_CONNECTIONS_PER_QUERY)
-
         related = set()
 
         # 1. Shared entities: memories that mention the same entities
@@ -319,6 +305,90 @@ class EngramGraphLayer:
         except Exception:
             pass
         return 0
+
+    def export_all_memories(self) -> List[Dict]:
+        """Enumerate all Memory nodes with their mentioned entities.
+
+        Returns list of dicts with keys: id, content, category, created_at, entities.
+        Used by the /graph slash command to hand content off to graphify.
+        """
+        memories: Dict[str, Dict] = {}
+        try:
+            result = self.conn.execute(
+                "MATCH (m:Memory) RETURN m.id, m.content, m.category, m.created_at"
+            )
+            while result.has_next():
+                row = result.get_next()
+                mid = row[0]
+                memories[mid] = {
+                    "id": mid,
+                    "content": row[1] or "",
+                    "category": row[2] or "",
+                    "created_at": float(row[3]) if row[3] is not None else 0.0,
+                    "entities": [],
+                }
+        except Exception as e:
+            logger.debug(f"Memory enumeration failed: {e}")
+            return []
+
+        # Attach mentioned entities per memory
+        try:
+            result = self.conn.execute(
+                "MATCH (m:Memory)-[:MENTIONS]->(e:Entity) "
+                "RETURN m.id, e.name, e.entity_type"
+            )
+            while result.has_next():
+                row = result.get_next()
+                mid = row[0]
+                if mid in memories:
+                    memories[mid]["entities"].append(
+                        {"name": row[1], "type": row[2]}
+                    )
+        except Exception as e:
+            logger.debug(f"Entity join failed: {e}")
+
+        return list(memories.values())
+
+    def export_all_edges(self) -> Dict:
+        """Return existing graph edges (co-retrieval + entity mentions) as JSON-ready dict."""
+        out: Dict = {"mentions": [], "co_retrieved": [], "related_to": []}
+        try:
+            result = self.conn.execute(
+                "MATCH (m:Memory)-[:MENTIONS]->(e:Entity) RETURN m.id, e.name"
+            )
+            while result.has_next():
+                row = result.get_next()
+                out["mentions"].append({"memory_id": row[0], "entity": row[1]})
+        except Exception as e:
+            logger.debug(f"Mentions export failed: {e}")
+        try:
+            result = self.conn.execute(
+                "MATCH (a:Memory)-[r:CO_RETRIEVED]->(b:Memory) "
+                "RETURN a.id, b.id, r.count, r.last_time"
+            )
+            while result.has_next():
+                row = result.get_next()
+                out["co_retrieved"].append({
+                    "from": row[0], "to": row[1],
+                    "count": int(row[2] or 0),
+                    "last_time": float(row[3] or 0.0),
+                })
+        except Exception as e:
+            logger.debug(f"Co-retrieval export failed: {e}")
+        try:
+            result = self.conn.execute(
+                "MATCH (a:Memory)-[r:RELATED_TO]->(b:Memory) "
+                "RETURN a.id, b.id, r.weight"
+            )
+            while result.has_next():
+                row = result.get_next()
+                out["related_to"].append({
+                    "from": row[0], "to": row[1],
+                    "weight": float(row[2] or 0.0),
+                })
+        except Exception as e:
+            logger.debug(f"Related export failed: {e}")
+        return out
 
     def get_stats(self) -> Dict:
         """Get node and edge counts."""

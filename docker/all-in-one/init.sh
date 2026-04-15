@@ -9,14 +9,9 @@ set -e
 
 DATA="${DATA_DIR_ROOT:-/data}"
 
-mkdir -p "$DATA/qdrant"
+mkdir -p "$DATA/qdrant/storage"
+mkdir -p "$DATA/qdrant/snapshots"
 mkdir -p "$DATA/engram"
-
-# Symlink Qdrant storage to persistent volume so vector data survives restarts
-if [ ! -L /qdrant/storage ] && [ ! -d /qdrant/storage ]; then
-    mkdir -p /qdrant
-    ln -s "$DATA/qdrant" /qdrant/storage
-fi
 
 echo "Engram all-in-one: data dir=$DATA"
 

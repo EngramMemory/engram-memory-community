@@ -15,19 +15,31 @@ Adapt these to your agent's configuration (SOUL.md, CLAUDE.md, or equivalent).
 ```markdown
 ## ENGRAM — HOW YOU THINK
 
-You have persistent memory across sessions. Use it the way a competent person uses their own memory: automatically, constantly, without being told.
+You have persistent memory via the Engram MCP. Use it instead of file-based memory — automatically, constantly, without being told.
 
-### Before You Do Anything
+### Memory Tools
 
-- **Recall first.** Before starting any task, search memory for relevant context: past decisions, preferences, rules, prior work on this area. The answer to most questions is already stored.
-- **Before asking the user:** Search memory. If the answer exists, use it. Don't waste their time re-explaining what they already told you.
-- **Before coding or deploying:** Search for relevant rules and past mistakes. They exist because something went wrong before.
+| Tool | When |
+|------|------|
+| `memory_store` | You learned something worth keeping (preference, decision, fact, correction) |
+| `memory_search` | You need context before acting — always search before asking the user |
+| `memory_recall` | Broad context injection at session start or before complex tasks |
+| `memory_forget` | Something stored is wrong or outdated |
+| `memory_consolidate` | Periodically merge near-duplicate memories to keep the store clean |
+| `memory_connect` | After storing related memories across categories, link them via the entity graph |
+| `memory_feedback` | After using search results, report which ones were useful to improve future recall |
 
-### While You Work
+### Rules
 
-- **Notice what matters.** When the user states a preference, makes a decision, shares a fact about their system, or corrects your approach — that's worth storing. You don't need to be told.
-- **Store completions.** When you finish a task, store a summary: what was done, what files changed, what decisions were made, what's still pending. Future-you needs this.
-- **Store corrections.** When you get something wrong and the user fixes your approach, store what happened and why. Don't make the same mistake twice.
+- **Recall first.** Before starting any task, search memory for relevant context. Before asking the user a question, check if the answer is already stored.
+- **Store proactively.** When the user states a preference, makes a decision, corrects your approach, or when you complete a task — store it. You do not need to be told.
+- **Store corrections.** When you get something wrong, store what happened and why. Do not make the same mistake twice.
+- **Do not duplicate.** Search before storing to avoid near-duplicates.
+- **Use categories.** `preference` for how the user likes to work, `decision` for architectural/design choices, `fact` for system knowledge, `entity` for people/projects/orgs.
+- **Give feedback.** After using memory_search results to make a decision, call memory_feedback with the IDs you actually used. This trains the recall engine to surface better results next time — at zero cost.
+- **Connect related memories.** When you store a decision that relates to a previously stored fact or preference, call memory_connect to link them in the entity graph. This improves spreading activation for future searches.
+- **Consolidate periodically.** If you notice search results returning near-duplicates, call memory_consolidate to merge them.
+- **This replaces file-based memory.** Do NOT use `~/.claude/projects/.../memory/` for memory. Use Engram's tools instead.
 
 ### What to Store
 
@@ -35,10 +47,10 @@ You have persistent memory across sessions. Use it the way a competent person us
 |--------|----------|------------|
 | User corrects your approach | `decision` | 0.9 |
 | Architectural decision made | `decision` | 0.8 |
-| User states a preference | `preference` | 0.7–0.8 |
+| User states a preference | `preference` | 0.7-0.8 |
 | Task completed | `fact` | 0.8 |
 | System/infrastructure fact learned | `fact` | 0.7 |
-| Person, project, or org context | `entity` | 0.6–0.7 |
+| Person, project, or org context | `entity` | 0.6-0.7 |
 
 ### What NOT to Store
 
@@ -47,14 +59,14 @@ You have persistent memory across sessions. Use it the way a competent person us
 - Exact file contents (store the insight, not the text)
 - Speculative or uncertain information
 
-### The Pattern
+### The Session Lifecycle Pattern
 
 ```
-1. Session starts → recall recent context, active projects, permanent rules
-2. User gives task → recall anything relevant to this area
-3. Work happens → notice preferences, decisions, corrections
-4. Task completes → store completion summary
-5. Session ends → everything important is already stored
+1. Session starts -> recall recent context, active projects, permanent rules
+2. User gives task -> recall anything relevant to this area
+3. Work happens -> notice preferences, decisions, corrections
+4. Task completes -> store completion summary
+5. Session ends -> everything important is already stored
 ```
 
 This isn't a feature you turn on. It's how you think.
@@ -72,6 +84,9 @@ This isn't a feature you turn on. It's how you think.
 | `memory_search` | You need context before acting |
 | `memory_recall` | Automatic context injection (auto-recall handles this) |
 | `memory_forget` | Something stored is wrong or outdated |
+| `memory_consolidate` | Near-duplicate memories are cluttering search results |
+| `memory_connect` | Link related memories across categories via the entity graph |
+| `memory_feedback` | Report which search results were useful to improve future ranking |
 
 ### Auto-Recall
 
