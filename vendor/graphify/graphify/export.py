@@ -17,45 +17,183 @@ def _strip_diacritics(text: str) -> str:
     return "".join(c for c in nfkd if not unicodedata.combining(c))
 
 
+# Engram Memory brand palette — accent green + harmonized variations.
+# Sourced from engrammemory-website tailwind brand colors (green-500 family).
 COMMUNITY_COLORS = [
-    "#4E79A7", "#F28E2B", "#E15759", "#76B7B2", "#59A14F",
-    "#EDC948", "#B07AA1", "#FF9DA7", "#9C755F", "#BAB0AC",
+    "#22c55e",  # brand-500 (accent)
+    "#4ade80",  # brand-400
+    "#16a34a",  # brand-600
+    "#86efb0",  # brand-300
+    "#15803c",  # brand-700
+    "#bbf7d4",  # brand-200
+    "#166534",  # brand-800
 ]
 
 MAX_NODES_FOR_VIZ = 5_000
 
 
 def _html_styles() -> str:
+    # Brand tokens sourced from engrammemory-website:
+    #   --bg #000000, --surface #0a0a0a, --card #141414, --text #ffffff,
+    #   --muted #999999, --border #292929, --accent #22c55e,
+    #   --font-sans Inter, --font-display Space Grotesk, --font-mono JetBrains Mono.
     return """<style>
+  :root {
+    --em-bg: #000000;
+    --em-surface: #0a0a0a;
+    --em-card: #141414;
+    --em-text: #ffffff;
+    --em-text-dim: #d4d4d4;
+    --em-muted: #999999;
+    --em-muted-soft: #666666;
+    --em-border: #292929;
+    --em-border-soft: #1f1f1f;
+    --em-accent: #22c55e;
+    --em-accent-soft: #4ade80;
+    --em-accent-deep: #15803c;
+    --em-font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    --em-font-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+    --em-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: #0f0f1a; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; display: flex; height: 100vh; overflow: hidden; }
-  #graph { flex: 1; }
-  #sidebar { width: 280px; background: #1a1a2e; border-left: 1px solid #2a2a4e; display: flex; flex-direction: column; overflow: hidden; }
-  #search-wrap { padding: 12px; border-bottom: 1px solid #2a2a4e; }
-  #search { width: 100%; background: #0f0f1a; border: 1px solid #3a3a5e; color: #e0e0e0; padding: 7px 10px; border-radius: 6px; font-size: 13px; outline: none; }
-  #search:focus { border-color: #4E79A7; }
-  #search-results { max-height: 140px; overflow-y: auto; padding: 4px 12px; border-bottom: 1px solid #2a2a4e; display: none; }
-  .search-item { padding: 4px 6px; cursor: pointer; border-radius: 4px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .search-item:hover { background: #2a2a4e; }
-  #info-panel { padding: 14px; border-bottom: 1px solid #2a2a4e; min-height: 140px; }
-  #info-panel h3 { font-size: 13px; color: #aaa; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
-  #info-content { font-size: 13px; color: #ccc; line-height: 1.6; }
+  html, body { height: 100%; }
+  body {
+    background: var(--em-bg);
+    color: var(--em-text);
+    font-family: var(--em-font-sans);
+    font-feature-settings: 'cv01','cv03','cv04','cv11';
+    -webkit-font-smoothing: antialiased;
+    display: flex;
+    overflow: hidden;
+  }
+  #graph { flex: 1; width: 100%; height: 100vh; background: var(--em-bg); }
+  #header {
+    position: fixed; top: 0; left: 0; z-index: 10;
+    padding: 18px 24px; pointer-events: none;
+  }
+  #header .title {
+    font-family: var(--em-font-display);
+    font-size: 18px; font-weight: 600; letter-spacing: -0.02em;
+    color: var(--em-text);
+  }
+  #header .title .mark { color: var(--em-accent); }
+  #header .subtitle {
+    font-family: var(--em-font-mono);
+    font-size: 11px; letter-spacing: 0.02em;
+    color: var(--em-muted); margin-top: 2px;
+    font-variant-numeric: tabular-nums;
+  }
+  #sidebar {
+    width: 300px;
+    background: var(--em-surface);
+    border-left: 1px solid var(--em-border);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  #search-wrap { padding: 14px; border-bottom: 1px solid var(--em-border); }
+  #search {
+    width: 100%;
+    background: var(--em-card);
+    border: 1px solid var(--em-border);
+    color: var(--em-text);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: var(--em-font-sans);
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  #search::placeholder { color: var(--em-muted-soft); }
+  #search:focus {
+    border-color: var(--em-accent);
+    box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.18);
+  }
+  #search-results {
+    max-height: 160px; overflow-y: auto;
+    padding: 6px 14px 10px;
+    border-bottom: 1px solid var(--em-border);
+    display: none;
+  }
+  .search-item {
+    padding: 5px 8px;
+    cursor: pointer;
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--em-text-dim);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .search-item:hover { background: var(--em-card); color: var(--em-text); }
+  #info-panel { padding: 16px; border-bottom: 1px solid var(--em-border); min-height: 150px; }
+  #info-panel h3 {
+    font-family: var(--em-font-mono);
+    font-size: 10px;
+    color: var(--em-muted);
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+  }
+  #info-content { font-size: 13px; color: var(--em-text-dim); line-height: 1.65; }
   #info-content .field { margin-bottom: 5px; }
-  #info-content .field b { color: #e0e0e0; }
-  #info-content .empty { color: #555; font-style: italic; }
-  .neighbor-link { display: block; padding: 2px 6px; margin: 2px 0; border-radius: 3px; cursor: pointer; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-left: 3px solid #333; }
-  .neighbor-link:hover { background: #2a2a4e; }
-  #neighbors-list { max-height: 160px; overflow-y: auto; margin-top: 4px; }
-  #legend-wrap { flex: 1; overflow-y: auto; padding: 12px; }
-  #legend-wrap h3 { font-size: 13px; color: #aaa; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
-  .legend-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; cursor: pointer; border-radius: 4px; font-size: 12px; }
-  .legend-item:hover { background: #2a2a4e; padding-left: 4px; }
+  #info-content .field b { color: var(--em-text); font-weight: 600; }
+  #info-content .empty { color: var(--em-muted-soft); font-style: normal; }
+  .neighbor-link {
+    display: block;
+    padding: 4px 8px;
+    margin: 2px 0;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--em-text-dim);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    border-left: 3px solid var(--em-border);
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .neighbor-link:hover { background: var(--em-card); color: var(--em-text); }
+  #neighbors-list { max-height: 180px; overflow-y: auto; margin-top: 6px; }
+  #legend-wrap { flex: 1; overflow-y: auto; padding: 14px; }
+  #legend-wrap h3 {
+    font-family: var(--em-font-mono);
+    font-size: 10px;
+    color: var(--em-muted);
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+  }
+  .legend-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 5px 6px;
+    cursor: pointer;
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--em-text-dim);
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .legend-item:hover { background: var(--em-card); color: var(--em-text); }
   .legend-item.dimmed { opacity: 0.35; }
-  .legend-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
   .legend-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .legend-count { color: #666; font-size: 11px; }
-  #stats { padding: 10px 14px; border-top: 1px solid #2a2a4e; font-size: 11px; color: #555; }
-</style>"""
+  .legend-count {
+    color: var(--em-muted-soft);
+    font-family: var(--em-font-mono);
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+  }
+  #stats {
+    padding: 12px 16px;
+    border-top: 1px solid var(--em-border);
+    font-family: var(--em-font-mono);
+    font-size: 10px;
+    color: var(--em-muted-soft);
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #52525b; }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">"""
 
 
 def _hyperedge_script(hyperedges_json: str) -> str:
@@ -136,24 +274,43 @@ const network = new vis.Network(container, {{ nodes: nodesDS, edges: edgesDS }},
     enabled: true,
     solver: 'forceAtlas2Based',
     forceAtlas2Based: {{
-      gravitationalConstant: -60,
-      centralGravity: 0.005,
-      springLength: 120,
-      springConstant: 0.08,
-      damping: 0.4,
-      avoidOverlap: 0.8,
+      gravitationalConstant: -55,
+      centralGravity: 0.008,
+      springLength: 140,
+      springConstant: 0.06,
+      damping: 0.6,
+      avoidOverlap: 0.85,
     }},
     stabilization: {{ iterations: 200, fit: true }},
+    minVelocity: 0.5,
   }},
   interaction: {{
     hover: true,
-    tooltipDelay: 100,
+    tooltipDelay: 120,
     hideEdgesOnDrag: true,
     navigationButtons: false,
     keyboard: false,
   }},
-  nodes: {{ shape: 'dot', borderWidth: 1.5 }},
-  edges: {{ smooth: {{ type: 'continuous', roundness: 0.2 }}, selectionWidth: 3 }},
+  configure: {{ enabled: false }},
+  nodes: {{
+    shape: 'dot',
+    borderWidth: 2,
+    borderWidthSelected: 3,
+    font: {{
+      face: "'Inter', system-ui, sans-serif",
+      color: '#ffffff',
+      size: 12,
+      strokeWidth: 0,
+    }},
+    shadow: false,
+  }},
+  edges: {{
+    smooth: {{ type: 'continuous', roundness: 0.2 }},
+    selectionWidth: 2,
+    color: {{ color: 'rgba(41, 41, 41, 0.75)', highlight: '#22c55e', hover: '#4ade80', inherit: false, opacity: 0.85 }},
+    scaling: {{ min: 1, max: 4 }},
+    hoverWidth: 1.2,
+  }},
 }});
 
 network.once('stabilizationIterationsDone', () => {{
@@ -166,7 +323,7 @@ function showInfo(nodeId) {{
   const neighborIds = network.getConnectedNodes(nodeId);
   const neighborItems = neighborIds.map(nid => {{
     const nb = nodesDS.get(nid);
-    const color = nb ? nb.color.background : '#555';
+    const color = nb && nb.color && nb.color.border ? nb.color.border : '#22c55e';
     return `<span class="neighbor-link" style="border-left-color:${{esc(color)}}" onclick="focusNode(${{JSON.stringify(nid)}})">${{esc(nb ? nb.label : nid)}}</span>`;
   }}).join('');
   document.getElementById('info-content').innerHTML = `
@@ -222,7 +379,7 @@ searchInput.addEventListener('input', () => {{
     const el = document.createElement('div');
     el.className = 'search-item';
     el.textContent = n.label;
-    el.style.borderLeft = `3px solid ${{n.color.background}}`;
+    el.style.borderLeft = `3px solid ${{n.color && n.color.border ? n.color.border : '#22c55e'}}`;
     el.style.paddingLeft = '8px';
     el.onclick = () => {{
       network.focus(n.id, {{ scale: 1.5, animation: true }});
@@ -374,9 +531,16 @@ def to_html(
         vis_nodes.append({
             "id": node_id,
             "label": label,
-            "color": {"background": color, "border": color, "highlight": {"background": "#ffffff", "border": color}},
+            # Surface-filled node with accent-tinted border from the community ramp.
+            # On highlight, invert to brand accent background with a brighter border.
+            "color": {
+                "background": "#141414",
+                "border": color,
+                "highlight": {"background": color, "border": "#4ade80"},
+                "hover": {"background": "#1a1a1a", "border": color},
+            },
             "size": round(size, 1),
-            "font": {"size": font_size, "color": "#ffffff"},
+            "font": {"size": font_size, "color": "#ffffff", "face": "'Inter', system-ui, sans-serif"},
             "title": _html.escape(label),
             "community": cid,
             "community_name": sanitize_label((community_labels or {}).get(cid, f"Community {cid}")),
@@ -390,6 +554,10 @@ def to_html(
     for u, v, data in G.edges(data=True):
         confidence = data.get("confidence", "EXTRACTED")
         relation = data.get("relation", "")
+        # Edge weight hint for vis.js scaling — use provided weight or confidence fallback.
+        weight = data.get("weight")
+        if weight is None:
+            weight = 1.0 if confidence == "EXTRACTED" else 0.5
         vis_edges.append({
             "from": u,
             "to": v,
@@ -397,7 +565,14 @@ def to_html(
             "title": _html.escape(f"{relation} [{confidence}]"),
             "dashes": confidence != "EXTRACTED",
             "width": 2 if confidence == "EXTRACTED" else 1,
-            "color": {"opacity": 0.7 if confidence == "EXTRACTED" else 0.35},
+            "value": float(weight),
+            "color": {
+                "color": "rgba(64, 64, 64, 0.6)" if confidence == "EXTRACTED" else "rgba(64, 64, 64, 0.35)",
+                "highlight": "#22c55e",
+                "hover": "#4ade80",
+                "inherit": False,
+                "opacity": 0.75 if confidence == "EXTRACTED" else 0.4,
+            },
             "confidence": confidence,
         })
 
@@ -420,16 +595,27 @@ def to_html(
     title = _html.escape(sanitize_label(str(output_path)))
     stats = f"{G.number_of_nodes()} nodes &middot; {G.number_of_edges()} edges &middot; {len(communities)} communities"
 
+    subtitle = (
+        f"{G.number_of_nodes()} nodes / "
+        f"{G.number_of_edges()} edges / "
+        f"{len(communities)} communities"
+    )
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>graphify - {title}</title>
-<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
+<meta name="theme-color" content="#0a0a0a">
+<title>Engram Memory Graph &middot; {title}</title>
+<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
 {_html_styles()}
 </head>
 <body>
 <div id="graph"></div>
+<div id="header">
+  <div class="title">Engram<span class="mark">.</span> Memory Graph</div>
+  <div class="subtitle">{subtitle}</div>
+</div>
 <div id="sidebar">
   <div id="search-wrap">
     <input id="search" type="text" placeholder="Search nodes..." autocomplete="off">
