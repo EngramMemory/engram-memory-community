@@ -81,20 +81,22 @@ These caps are real. They exist because [Engram Cloud](https://engrammemory.ai) 
 
 ## What You Get
 
-Six tools exposed through MCP:
+Seven MCP tools + a visual graph command:
 
 | Tool | What it does |
 |---|---|
-| `memory_store` | Save a memory with semantic embedding |
-| `memory_search` | Three-tier recall search across all stored memories |
+| `memory_store` | Save a memory with semantic embedding and auto-classification |
+| `memory_search` | Three-tier recall search with confidence scoring and match context |
 | `memory_recall` | Auto-inject relevant memories into agent context |
 | `memory_forget` | Remove memories by ID or search match |
-| `memory_consolidate` | Find and merge near-duplicate memories (manual, 0.95 threshold) |
-| `memory_connect` | Discover cross-category connections (max 3 per call) |
+| `memory_consolidate` | Find and merge near-duplicate memories |
+| `memory_connect` | Discover cross-category connections via the entity graph |
+| `memory_feedback` | Report which search results were useful — improves future recall |
+| `/graph` | Generate an interactive visual graph of your memories (Claude Code slash command) |
 
-**Categories:** preference, fact, decision, entity, other.
+**Categories:** preference, fact, decision, entity, other — auto-detected by local keyword classifier.
 
-The recall engine also includes a Kuzu-backed entity graph (capped at 500 entities, 1-hop traversal in Community) that tracks co-retrieval patterns and does spreading activation across related memories.
+The recall engine includes a Kuzu-backed entity graph for entity tracking, co-retrieval patterns, spreading activation, and `PREFERRED_OVER` edges from feedback signals. The `/graph` command renders your memory graph as an interactive vis.js visualization — the host LLM does entity extraction, the vendored [graphify](https://github.com/safishamsi/graphify) pipeline handles rendering.
 
 ---
 
@@ -175,9 +177,9 @@ Start a conversation. Tell it something. Close the session. Come back tomorrow. 
 │   (Claude Code, │    │  ┌──────────────────────────────────────────┐  │
 │    Cursor,      │───▶│  │       Three-Tier Recall Engine           │  │
 │    OpenClaw,    │    │  │  Tier 1: Hot Cache  (sub-ms, ACT-R)      │  │
-│    Gemini, ...) │    │  │  Tier 2: Hash Index (O(1) LSH, 4 heads)  │  │
+│    Gemini, ...) │    │  │  Tier 2: Hash Index (O(1) LSH, 6 heads)  │  │
 │                 │    │  │  Tier 3: Qdrant ANN (dense + BM25 RRF)   │  │
-└─────────────────┘    │  │  Graph:  Kuzu (500 entities, 1-hop)      │  │
+└─────────────────┘    │  │  Graph:  Kuzu entity graph + feedback     │  │
                        │  └────────────────┬─────────────────────────┘  │
                        │                   │                            │
                        │   ┌───────────────┴────────────┐               │
@@ -221,13 +223,15 @@ Get an API key (free tier, no credit card) at [app.engrammemory.ai](https://app.
 **SDKs:**
 - Python: `pip install engrammemory-ai` — [PyPI](https://pypi.org/project/engrammemory-ai/)
 - Node: `npm install engrammemory-ai` — [npm](https://www.npmjs.com/package/engrammemory-ai)
-- [Dashboard](https://app.engrammemory.ai) | [API Docs](https://api.engrammemory.ai/docs)
+- [Dashboard](https://app.engrammemory.ai) | [Privacy](https://engrammemory.ai/privacy)
 
 ---
 
 ## Configuration
 
-| Option | Default | Description |
+### Container environment variables
+
+| Variable | Default | Description |
 |---|---|---|
 | `QDRANT_URL` | `http://localhost:6333` | Qdrant vector database |
 | `FASTEMBED_URL` | `http://localhost:11435` | FastEmbed embedding service |
@@ -235,6 +239,21 @@ Get an API key (free tier, no credit card) at [app.engrammemory.ai](https://app.
 | `DATA_DIR` | `/data/engram` | Recall engine state (hot tier, hash index, graph) |
 | `ENGRAM_API_KEY` | *(empty)* | Engram Cloud API key (enables cloud extensions) |
 | `ENGRAM_API_URL` | `https://api.engrammemory.ai` | Cloud API endpoint |
+
+### Tunable recall engine parameters
+
+Every parameter is configurable via env var. Pass them to `docker run -e` or set in your compose file.
+
+| Variable | Default | What it controls |
+|---|---|---|
+| `ENGRAM_HOT_TIER_MAX` | `1000` | Max entries in the in-memory hot cache (higher = more RAM, better hit rate) |
+| `ENGRAM_HASH_HEADS` | `6` | Number of independent LSH hash tables (more = fewer false positives) |
+| `ENGRAM_HASH_BITS` | `14` | Bits per hash signature (more = finer buckets, sparser tables) |
+| `ENGRAM_GRAPH_MAX_ENTITIES` | `500` | Max entity nodes in the Kuzu graph |
+| `ENGRAM_GRAPH_MAX_HOPS` | `1` | Graph traversal depth for spreading activation |
+| `ENGRAM_ACTR_MAX_TIMESTAMPS` | `50` | Access timestamps stored per memory for ACT-R decay |
+| `ENGRAM_DEDUP_THRESHOLD` | `0.95` | Cosine similarity threshold for memory_consolidate |
+| `ENGRAM_MAX_CONNECTIONS` | `3` | Max connections per memory_connect call |
 
 For OpenClaw plugin config options (`autoRecall`, `autoCapture`, `maxRecallResults`, `minRecallScore`), see [docs/OPENCLAW_INTEGRATION.md](docs/OPENCLAW_INTEGRATION.md).
 
