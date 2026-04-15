@@ -1,3 +1,4 @@
 #!/command/with-contenv sh
-cd /
+export QDRANT__STORAGE__STORAGE_PATH=/data/qdrant/storage
+export QDRANT__STORAGE__SNAPSHOTS_PATH=/data/qdrant/snapshots
 exec /usr/local/bin/qdrant --config-path /etc/qdrant/config.yaml --uri http://localhost:6333 2>&1
