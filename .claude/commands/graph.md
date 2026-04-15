@@ -13,11 +13,6 @@ Arguments: $ARGUMENTS
 
 Steps:
 
-1. Confirm `$ANTHROPIC_API_KEY` is set. Graphify uses it for its
-   entity-extraction passes on larger corpora. If unset, tell the
-   user:
-   `ANTHROPIC_API_KEY is not set. export ANTHROPIC_API_KEY=... and re-run /graph`
-   and stop.
 2. Create a fresh output directory at
    `~/.engram/graph-$(date +%Y%m%d-%H%M%S)` and remember the path as
    `<OUT>`.
