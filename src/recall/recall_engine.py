@@ -806,12 +806,22 @@ class EngramRecallEngine:
             except Exception as e:
                 logger.debug(f"Cloud overflow search failed (local unaffected): {e}")
 
-        # Post-fusion cosine re-rank: re-score vector/hash tier results
-        # by pure semantic similarity so relevant content outranks
-        # keyword-heavy generic memories.
+        # Post-fusion cosine re-rank: re-score EVERY result by pure
+        # cosine similarity to the query. For hot tier results (which
+        # have no transient doc_vector), look up the vector from the
+        # hot tier cache. This was the R@1 regression in the cloud
+        # port — hot tier results were keeping their ACT-R-weighted
+        # scores instead of getting re-ranked, which let strength-
+        # boosted but semantically-distant items win top-1.
         for r in results:
-            if r.doc_vector is not None and len(r.doc_vector) > 0:
-                cos_sim = float(cosine_similarity(query_vector, r.doc_vector))
+            doc_vec = r.doc_vector
+            if doc_vec is None or len(doc_vec) == 0:
+                # Try the hot tier cache — every promoted doc stores its vector
+                hot_entry = self.hot_tier.get_memory(r.doc_id)
+                if hot_entry is not None and hot_entry.vector is not None:
+                    doc_vec = hot_entry.vector
+            if doc_vec is not None and len(doc_vec) > 0:
+                cos_sim = float(cosine_similarity(query_vector, doc_vec))
                 r.score = cos_sim
                 r.similarity = cos_sim
 
