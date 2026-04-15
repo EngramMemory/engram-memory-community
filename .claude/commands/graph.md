@@ -1,34 +1,66 @@
 ---
 description: Generate an interactive visual graph of your memories. Powered by graphify (github.com/safishamsi/graphify, MIT).
-argument-hint: "[--limit <N>]"
-allowed-tools: Bash, Read
+argument-hint: "[query hint]"
+allowed-tools: Bash, Read, Write, mcp__engrammemory__memory_search, mcp__engrammemory__memory_recall
 ---
 
-Generate an interactive vis.js graph of the Engram memory store by
-exporting every memory from the live engram container and handing it
-off to the vendored graphify library under `vendor/graphify/`. No
-extra PyPI install is required — graphify ships in-tree.
+Build an interactive vis.js graph of the user's Engram memories. **You
+(the host LLM) do the entity extraction and relationship mapping
+yourself** — the Python driver is only a renderer. No external LLM API
+key is required. Do NOT call Anthropic, OpenAI, or any other LLM API.
+`ANTHROPIC_API_KEY` is NOT needed and must not be referenced.
 
 Arguments: $ARGUMENTS
 
 Steps:
 
-2. Create a fresh output directory at
-   `~/.engram/graph-$(date +%Y%m%d-%H%M%S)` and remember the path as
-   `<OUT>`.
-3. From the repo root, run the driver:
-   `python3 scripts/engram_graph.py --output <OUT> $ARGUMENTS`.
-   The driver calls `scripts/export_memories_for_graph.py` internally
-   to pull memories out of Qdrant, then invokes
-   `graphify.build_from_json` / `cluster` / `to_html` / `to_json` from
-   `vendor/graphify/`.
-4. If the driver exits with code 3, the `agent-memory` collection was
-   empty — tell the user to store some memories first and stop.
-5. If the driver exits with code 1 or 2, surface the full stderr to
-   the user and stop.
-6. On success, report the absolute path to `<OUT>/graphify-out/graph.html`
-   and offer to open it (e.g. `xdg-open <OUT>/graphify-out/graph.html`
-   on Linux). Do not open it without confirmation.
+1. **Fetch every memory** via the engram MCP tools. Prefer
+   `mcp__engrammemory__memory_search` with a broad query (`"*"` or an
+   empty string) and a high `limit` (e.g. 1000). If that returns
+   nothing useful, fall back to `mcp__engrammemory__memory_recall`
+   with a broad prompt. Collect the full set of memory objects
+   (`id`, `content`/`text`, `category`, `created_at`, etc.).
 
-Do not modify the memory store. Do not invent fake memories. The
-graph is read-only over the live engram Qdrant collection.
+2. **If zero memories come back**, tell the user exactly:
+   `No memories stored yet — store some via the engram MCP tools first.`
+   and stop.
+
+3. **Build nodes.** For each memory emit one node:
+   - `id`: the memory id (string)
+   - `label`: short summary you write, ≤60 chars
+   - `category`: the memory's `category` field if present, else `"general"`
+   - `content`: first ~200 chars of the memory text
+   - `entities`: array of noun phrases / named entities **you** identify
+     by reading the content — people, projects, technologies, places,
+     decisions, file paths, repos, commands. Be specific; lowercase;
+     dedupe within a node.
+
+4. **Build edges.** Connect memories using your own reasoning:
+   - Shared entity → `{type:"shared-entity", label:<entity>, weight:0.8}`
+     (one edge per shared entity pair; dedupe symmetric duplicates)
+   - Explicit reference (one memory names another by id or unique topic)
+     → `{type:"reference", weight:0.95}`
+   - Timestamps within ~10 minutes → `{type:"temporal", weight:0.4}`
+   - Clear thematic overlap that isn't a shared named entity →
+     `{type:"topic", label:<theme>, weight:0.5}`
+   `weight` is your confidence in [0,1]. Skip weak edges (<0.3).
+
+5. **Write the JSON.** Pick a timestamp `TS = $(date +%Y%m%d-%H%M%S)`.
+   Use the `Write` tool to create `~/.engram/graph-input-<TS>.json`
+   with `{"nodes":[...], "edges":[...]}`.
+
+6. **Render.** From the repo root, run:
+   `python3 scripts/engram_graph.py --mode llm --input ~/.engram/graph-input-<TS>.json --output ~/.engram/graph-output-<TS>`
+   The driver validates the JSON, passes it through vendored
+   `graphify.build_from_json → cluster → to_html / to_json`, and
+   prints a line of the form
+   `[engram-graph] mode=llm nodes=N edges=M communities=K → <path>/graph.html`.
+
+7. **Report.** Parse that line, then tell the user exactly:
+   `Memory graph ready: <path>/graph.html — open in browser to explore. N nodes, M edges, K communities.`
+   Offer to open it (e.g. `xdg-open <path>/graph.html`) but do not
+   open without confirmation.
+
+Do not modify the memory store. Do not invent memories. All
+extraction is read-only. Credit: graphify
+(github.com/safishamsi/graphify, MIT) powers the rendering pipeline.
