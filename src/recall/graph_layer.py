@@ -320,6 +320,90 @@ class EngramGraphLayer:
             pass
         return 0
 
+    def export_all_memories(self) -> List[Dict]:
+        """Enumerate all Memory nodes with their mentioned entities.
+
+        Returns list of dicts with keys: id, content, category, created_at, entities.
+        Used by the /graph slash command to hand content off to graphify.
+        """
+        memories: Dict[str, Dict] = {}
+        try:
+            result = self.conn.execute(
+                "MATCH (m:Memory) RETURN m.id, m.content, m.category, m.created_at"
+            )
+            while result.has_next():
+                row = result.get_next()
+                mid = row[0]
+                memories[mid] = {
+                    "id": mid,
+                    "content": row[1] or "",
+                    "category": row[2] or "",
+                    "created_at": float(row[3]) if row[3] is not None else 0.0,
+                    "entities": [],
+                }
+        except Exception as e:
+            logger.debug(f"Memory enumeration failed: {e}")
+            return []
+
+        # Attach mentioned entities per memory
+        try:
+            result = self.conn.execute(
+                "MATCH (m:Memory)-[:MENTIONS]->(e:Entity) "
+                "RETURN m.id, e.name, e.entity_type"
+            )
+            while result.has_next():
+                row = result.get_next()
+                mid = row[0]
+                if mid in memories:
+                    memories[mid]["entities"].append(
+                        {"name": row[1], "type": row[2]}
+                    )
+        except Exception as e:
+            logger.debug(f"Entity join failed: {e}")
+
+        return list(memories.values())
+
+    def export_all_edges(self) -> Dict:
+        """Return existing graph edges (co-retrieval + entity mentions) as JSON-ready dict."""
+        out: Dict = {"mentions": [], "co_retrieved": [], "related_to": []}
+        try:
+            result = self.conn.execute(
+                "MATCH (m:Memory)-[:MENTIONS]->(e:Entity) RETURN m.id, e.name"
+            )
+            while result.has_next():
+                row = result.get_next()
+                out["mentions"].append({"memory_id": row[0], "entity": row[1]})
+        except Exception as e:
+            logger.debug(f"Mentions export failed: {e}")
+        try:
+            result = self.conn.execute(
+                "MATCH (a:Memory)-[r:CO_RETRIEVED]->(b:Memory) "
+                "RETURN a.id, b.id, r.count, r.last_time"
+            )
+            while result.has_next():
+                row = result.get_next()
+                out["co_retrieved"].append({
+                    "from": row[0], "to": row[1],
+                    "count": int(row[2] or 0),
+                    "last_time": float(row[3] or 0.0),
+                })
+        except Exception as e:
+            logger.debug(f"Co-retrieval export failed: {e}")
+        try:
+            result = self.conn.execute(
+                "MATCH (a:Memory)-[r:RELATED_TO]->(b:Memory) "
+                "RETURN a.id, b.id, r.weight"
+            )
+            while result.has_next():
+                row = result.get_next()
+                out["related_to"].append({
+                    "from": row[0], "to": row[1],
+                    "weight": float(row[2] or 0.0),
+                })
+        except Exception as e:
+            logger.debug(f"Related export failed: {e}")
+        return out
+
     def get_stats(self) -> Dict:
         """Get node and edge counts."""
         stats = {}

@@ -31,8 +31,11 @@ from matryoshka import get_fast_slice, SLICE_FAST
 logger = logging.getLogger("engram.hasher")
 
 # Community Edition limits
-COMMUNITY_MAX_HEADS = 4
-COMMUNITY_MAX_HASH_SIZE = 12
+# Raised from 4/12 → 6/14 to match EngramConfig defaults. The hasher was
+# silently clamping the configured values, leaving the hash tier structurally
+# unable to contribute to results (task #67 — hash tier 0% utilization).
+COMMUNITY_MAX_HEADS = 6
+COMMUNITY_MAX_HASH_SIZE = 14
 
 
 @dataclass
