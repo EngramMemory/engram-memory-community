@@ -1,0 +1,88 @@
+{
+  "name": "engrammemory",
+  "display_name": "Engram Memory",
+  "description": "Persistent semantic memory for AI agents. Store, search, and recall memories across sessions using a three-tier recall engine (hot cache, hash index, vector search).",
+  "version": "0.1.0",
+  "author": "EngramMemory",
+  "author_url": "https://github.com/EngramMemory",
+  "homepage": "https://engrammemory.ai",
+  "repository": "https://github.com/EngramMemory/engram-memory-community",
+  "license": "MIT",
+  "icon": "https://engrammemory.ai/logo.svg",
+  "privacy_policies": [
+    "https://engrammemory.ai/privacy"
+  ],
+  "contact": {
+    "email": "eddy@engrammemory.ai",
+    "support_url": "https://github.com/EngramMemory/engram-memory-community/issues"
+  },
+  "tools": [
+    {
+      "name": "memory_store",
+      "title": "Store Memory",
+      "description": "Store a memory with semantic embedding",
+      "readOnlyHint": false,
+      "destructiveHint": false
+    },
+    {
+      "name": "memory_search",
+      "title": "Search Memories",
+      "description": "Search memories using three-tier recall",
+      "readOnlyHint": true,
+      "destructiveHint": false
+    },
+    {
+      "name": "memory_recall",
+      "title": "Recall Context",
+      "description": "Recall relevant memories for context injection",
+      "readOnlyHint": true,
+      "destructiveHint": false
+    },
+    {
+      "name": "memory_forget",
+      "title": "Forget Memory",
+      "description": "Delete a memory from all tiers",
+      "readOnlyHint": false,
+      "destructiveHint": true
+    },
+    {
+      "name": "memory_consolidate",
+      "title": "Consolidate Memories",
+      "description": "Find and merge near-duplicate memories",
+      "readOnlyHint": false,
+      "destructiveHint": true
+    },
+    {
+      "name": "memory_feedback",
+      "title": "Give Feedback",
+      "description": "Report which search results were useful to improve recall",
+      "readOnlyHint": false,
+      "destructiveHint": false
+    },
+    {
+      "name": "memory_connect",
+      "title": "Discover Connections",
+      "description": "Discover cross-category connections via the entity graph",
+      "readOnlyHint": true,
+      "destructiveHint": false
+    }
+  ],
+  "examples": [
+    {
+      "prompt": "Remember that I prefer TypeScript over JavaScript for all new projects",
+      "description": "Store a preference memory that persists across sessions"
+    },
+    {
+      "prompt": "What do you know about my database setup?",
+      "description": "Search memories for relevant context about infrastructure decisions"
+    },
+    {
+      "prompt": "What have I been working on recently?",
+      "description": "Recall broad context about recent activity and decisions"
+    }
+  ],
+  "prerequisites": {
+    "description": "Requires the Engram Memory container running locally",
+    "install_command": "docker run -d --name engram-memory -p 8585:8585 -v engram-data:/data engrammemory/engram-memory:latest"
+  }
+}

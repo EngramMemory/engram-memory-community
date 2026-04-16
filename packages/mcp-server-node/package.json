@@ -1,0 +1,52 @@
+{
+  "name": "@engrammemory/mcp-server",
+  "version": "0.1.0",
+  "description": "Engram Memory MCP server for Claude Desktop and other MCP clients. Persistent semantic memory for AI agents.",
+  "author": "EngramMemory <eddy@engrammemory.ai> (https://github.com/EngramMemory)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/EngramMemory/engram-memory-community",
+    "directory": "packages/mcp-server-node"
+  },
+  "homepage": "https://engrammemory.ai",
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "ai-memory",
+    "claude",
+    "claude-desktop",
+    "engram",
+    "qdrant",
+    "semantic-memory",
+    "agents"
+  ],
+  "type": "module",
+  "bin": {
+    "engrammemory-mcp": "./dist/index.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "manifest.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "tsx": "^4.19.0",
+    "@types/node": "^22.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
