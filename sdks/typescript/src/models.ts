@@ -21,12 +21,7 @@
  *   importance → 0.5
  *   metadata → null
  *   collection → "agent-memory"
- *   share_with → null
  *
- * `shareWith` is the camelCase-facing name; we translate it to
- * `share_with` at the wire layer in client.ts. Wave 3 added this —
- * entries take the form `"hive:<uuid>"` and any hive the caller isn't
- * a member of returns 403 (api.py L2457-L2467).
  */
 export interface StoreRequestBody {
   text: string;
@@ -34,7 +29,6 @@ export interface StoreRequestBody {
   importance?: number;
   metadata?: Record<string, unknown>;
   collection?: string;
-  share_with?: string[];
 }
 
 /** `class StoreResponse` — api.py L614-L619. */
@@ -137,10 +131,10 @@ export interface CreateHiveRequestBody {
   slug: string;
 }
 
-/** `class AddMemberRequest` — api.py L652-L654. Default role="member". */
-export interface AddMemberRequestBody {
-  user_id: string;
-  role?: string;
+/** Body for ``POST /v1/hives/{hive_id}/grants``. */
+export interface GrantHiveAccessRequestBody {
+  key_prefix: string;
+  permission?: string;
 }
 
 /**
@@ -174,25 +168,30 @@ export interface ListTeamsResponse {
   hives: HiveResponse[];
 }
 
-/**
- * Return envelope from POST /v1/hives/{id}/members — api.py L3079-L3083.
- * `joined_at` is ISO-8601 or null.
- */
-export interface AddHiveMemberResponse {
+/** Return envelope from POST /v1/hives/{id}/grants. */
+export interface GrantHiveAccessResponse {
   hive_id: string;
-  user_id: string;
-  role: string;
-  joined_at: string | null;
+  key_prefix: string;
+  permission: string;
 }
 
-/**
- * Return envelope from DELETE /v1/hives/{id}/members/{user_id}
- * — api.py L3152.
- */
-export interface RemoveHiveMemberResponse {
+/** Return envelope from DELETE /v1/hives/{id}/grants/{key_prefix}. */
+export interface RevokeHiveAccessResponse {
   hive_id: string;
-  user_id: string;
-  removed: boolean;
+  key_prefix: string;
+  revoked: boolean;
+}
+
+/** Single grant entry from GET /v1/hives/{id}/grants. */
+export interface HiveGrant {
+  key_prefix: string;
+  permission: string;
+  granted_at?: string;
+}
+
+/** Return envelope from GET /v1/hives/{id}/grants. */
+export interface ListHiveGrantsResponse {
+  grants: HiveGrant[];
 }
 
 // ─── System ──────────────────────────────────────────────────────────
@@ -220,7 +219,6 @@ export interface StoreOptions {
   importance?: number;
   metadata?: Record<string, unknown>;
   collection?: string;
-  shareWith?: string[];
 }
 
 export interface SearchOptions {
@@ -245,7 +243,7 @@ export interface CreateTeamOptions {
   slug: string;
 }
 
-export interface AddHiveMemberOptions {
-  userId: string;
-  role?: string;
+export interface GrantHiveAccessOptions {
+  keyPrefix: string;
+  permission?: string;
 }

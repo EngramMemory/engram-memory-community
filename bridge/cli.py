@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
 from typing import List, Optional
 
 from .config import (
@@ -21,18 +20,9 @@ from .config import (
     write_config_template,
 )
 from .client import EngramClient
-from .install import install_claude_code_hook, install_git_hooks
+from .install import install_claude_code_hook
 from .project import detect_project
 from .pull import PullOutcome, run_pull
-from .push import (
-    EVENT_COMMIT,
-    EVENT_MANUAL,
-    EVENT_TEST_PASS,
-    PushOutcome,
-    push_git_commit,
-    push_manual,
-    push_test_pass,
-)
 
 
 PROG = "engram bridge"
@@ -107,67 +97,10 @@ def _build_parser() -> argparse.ArgumentParser:
             "doesn't exist."
         ),
     )
-    install.add_argument(
-        "--git-hooks",
-        dest="git_hooks",
-        action="store_true",
-        help=(
-            "Install a post-commit hook that pushes each commit to "
-            "the Engram cloud. Idempotent; merges into any existing "
-            "hook and creates a timestamped backup."
-        ),
-    )
-    install.add_argument(
-        "--repo",
-        dest="repo",
-        default=None,
-        help=(
-            "Repo directory for --git-hooks. Defaults to the current "
-            "working directory."
-        ),
-    )
-
-    push = sub.add_parser(
-        "push",
-        help="Push a manual milestone memory to the Engram cloud.",
-    )
-    push.add_argument(
-        "message",
-        help="Free-form text to store (e.g. 'shipped wave 2').",
-    )
-    push.add_argument(
-        "--type",
-        dest="push_type",
-        default=EVENT_MANUAL,
-        help="Event type label. Default: milestone.",
-    )
-    push.add_argument(
-        "--metadata",
-        dest="metadata",
-        action="append",
-        default=[],
-        metavar="KEY=VALUE",
-        help=(
-            "Extra metadata as key=value pairs. Repeat for multiple "
-            "entries. Values are stored as strings."
-        ),
-    )
-    push.add_argument(
-        "--hive",
-        dest="hive",
-        action="append",
-        default=[],
-        metavar="HIVE_ID",
-        help=(
-            "Also share this memory with a hive. Pass --hive more "
-            "than once to fan out to several hives. The caller must "
-            "already be a member of each listed hive."
-        ),
-    )
 
     hive = sub.add_parser(
         "hive",
-        help="Manage hive scopes (list/create/add-member).",
+        help="Manage hive scopes (list/create/grant/revoke).",
     )
     hive_sub = hive.add_subparsers(dest="hive_command")
 
@@ -188,50 +121,25 @@ def _build_parser() -> argparse.ArgumentParser:
         help="URL slug (lowercase, 3-48 chars, hyphens allowed).",
     )
 
-    hive_add = hive_sub.add_parser(
-        "add-member",
-        help="Add a user to a hive. Caller must be owner or admin.",
+    hive_grant = hive_sub.add_parser(
+        "grant",
+        help="Grant an API key access to a hive.",
     )
-    hive_add.add_argument("hive_id", help="Target hive_id (uuid).")
-    hive_add.add_argument("user_id", help="Target user_id (uuid).")
-    hive_add.add_argument(
-        "--role",
-        dest="role",
-        default="member",
-        choices=["member", "admin"],
-        help="Role to assign. Default: member.",
-    )
-
-    push_commit = sub.add_parser(
-        "push-commit",
-        help=(
-            "Push the current HEAD commit. Wired from the post-commit "
-            "git hook."
-        ),
-    )
-    push_commit.add_argument(
-        "--repo",
-        dest="repo",
-        default=None,
-        help="Repo directory. Defaults to the current working directory.",
+    hive_grant.add_argument("hive_id", help="Target hive_id (uuid).")
+    hive_grant.add_argument("key_prefix", help="API key prefix to grant access.")
+    hive_grant.add_argument(
+        "--permission",
+        dest="permission",
+        default="readwrite",
+        help="Permission level. Default: readwrite.",
     )
 
-    push_test = sub.add_parser(
-        "push-test",
-        help="Push a green test-suite event.",
+    hive_revoke = hive_sub.add_parser(
+        "revoke",
+        help="Revoke an API key's access to a hive.",
     )
-    push_test.add_argument("suite", help="Suite name.")
-    push_test.add_argument(
-        "duration", type=float, help="Wall time in seconds."
-    )
-    push_test.add_argument("count", type=int, help="Test count.")
-    push_test.add_argument(
-        "--runner",
-        dest="runner",
-        default="pytest",
-        choices=["pytest", "jest", "cargo", "go", "custom"],
-        help="Test runner. Default: pytest.",
-    )
+    hive_revoke.add_argument("hive_id", help="Target hive_id (uuid).")
+    hive_revoke.add_argument("key_prefix", help="API key prefix to revoke access.")
 
     return parser
 
@@ -331,101 +239,11 @@ def _cmd_install(args: argparse.Namespace) -> int:
         result = install_claude_code_hook()
         sys.stdout.write(result.message + "\n")
         did_anything = True
-    if args.git_hooks:
-        repo = args.repo or str(Path.cwd())
-        try:
-            outcome = install_git_hooks(repo)
-        except Exception as exc:  # noqa: BLE001
-            sys.stdout.write(
-                "git-hooks install failed: {}\n".format(exc)
-            )
-        else:
-            sys.stdout.write(outcome.message + "\n")
-        did_anything = True
     if not did_anything:
         sys.stdout.write(
-            "Nothing to install. Pass --claude-code, --git-hooks, "
+            "Nothing to install. Pass --claude-code "
             "and/or --write-config-template.\n"
         )
-    return 0
-
-
-def _parse_metadata_pairs(pairs: List[str]) -> dict:
-    """Parse ``--metadata k=v`` pairs into a dict. Silently drops
-    malformed entries rather than failing the push."""
-    out: dict = {}
-    for raw in pairs or []:
-        if not isinstance(raw, str) or "=" not in raw:
-            continue
-        key, _, value = raw.partition("=")
-        key = key.strip()
-        if not key:
-            continue
-        out[key] = value.strip()
-    return out
-
-
-def _cmd_push(args: argparse.Namespace) -> int:
-    try:
-        outcome: PushOutcome = push_manual(
-            message=args.message,
-            push_type=args.push_type,
-            metadata=_parse_metadata_pairs(args.metadata),
-            share_with=_hive_scopes(getattr(args, "hive", None)),
-        )
-    except Exception:  # noqa: BLE001
-        return 0
-    _emit_push_status(outcome)
-    return 0
-
-
-def _hive_scopes(hives: Optional[List[str]]) -> List[str]:
-    """Convert a list of bare hive ids from ``--hive`` into scope strings.
-
-    Users can type either ``abc-123`` or ``hive:abc-123`` — both
-    should work, so we strip an optional leading prefix and add our
-    own. Duplicates collapse. Empty / whitespace entries drop.
-    """
-    if not hives:
-        return []
-    seen: List[str] = []
-    for raw in hives:
-        if not isinstance(raw, str):
-            continue
-        stripped = raw.strip()
-        if not stripped:
-            continue
-        if stripped.startswith("hive:"):
-            stripped = stripped[len("hive:"):]
-        if not stripped:
-            continue
-        scope = "hive:{}".format(stripped)
-        if scope not in seen:
-            seen.append(scope)
-    return seen
-
-
-def _cmd_push_commit(args: argparse.Namespace) -> int:
-    try:
-        repo = args.repo or str(Path.cwd())
-        outcome: PushOutcome = push_git_commit(repo)
-    except Exception:  # noqa: BLE001
-        return 0
-    _emit_push_status(outcome)
-    return 0
-
-
-def _cmd_push_test(args: argparse.Namespace) -> int:
-    try:
-        outcome: PushOutcome = push_test_pass(
-            suite_name=args.suite,
-            duration=args.duration,
-            test_count=args.count,
-            runner=args.runner,
-        )
-    except Exception:  # noqa: BLE001
-        return 0
-    _emit_push_status(outcome)
     return 0
 
 
@@ -437,12 +255,14 @@ def _cmd_hive(args: argparse.Namespace) -> int:
         return _cmd_hive_list()
     if sub == "create":
         return _cmd_hive_create(args)
-    if sub == "add-member":
-        return _cmd_hive_add_member(args)
+    if sub == "grant":
+        return _cmd_hive_grant(args)
+    if sub == "revoke":
+        return _cmd_hive_revoke(args)
     # Bare `engram-bridge hive` — print a short usage hint.
     sys.stdout.write(
         "hive commands: list | create <name> --slug <slug> | "
-        "add-member <hive_id> <user_id> [--role member|admin]\n"
+        "grant <hive_id> <key_prefix> | revoke <hive_id> <key_prefix>\n"
     )
     return 0
 
@@ -500,58 +320,51 @@ def _cmd_hive_create(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_hive_add_member(args: argparse.Namespace) -> int:
+def _cmd_hive_grant(args: argparse.Namespace) -> int:
     cfg = load_config()
     if not cfg.enabled:
         return 0
     hive_id = (args.hive_id or "").strip()
-    user_id = (args.user_id or "").strip()
-    role = (args.role or "member").strip().lower()
-    if not hive_id or not user_id:
-        sys.stdout.write("hive add-member: hive_id and user_id are required\n")
+    key_prefix = (args.key_prefix or "").strip()
+    permission = (args.permission or "readwrite").strip().lower()
+    if not hive_id or not key_prefix:
+        sys.stdout.write("hive grant: hive_id and key_prefix are required\n")
         return 0
     try:
         client = EngramClient(cfg)
-        result = client.add_hive_member(hive_id=hive_id, user_id=user_id, role=role)
+        result = client.grant_hive_access(hive_id=hive_id, key_prefix=key_prefix, permission=permission)
     except Exception:  # noqa: BLE001
         return 0
     if result is None:
-        sys.stdout.write("hive add-member: api error\n")
+        sys.stdout.write("hive grant: api error\n")
         return 0
     sys.stdout.write(
-        "hive add-member ok hive={} user={} role={}\n".format(hive_id, user_id, role)
+        "hive grant ok hive={} key_prefix={} permission={}\n".format(hive_id, key_prefix, permission)
     )
     return 0
 
 
-def _emit_push_status(outcome: PushOutcome) -> None:
-    """Write one short status line to stdout for interactive feedback.
-
-    Stays quiet when the bridge is disabled so the CLI honors the
-    'never break a workflow' rule — users who install a git hook
-    before configuring a key should see nothing at all.
-    """
-    if outcome.status == "disabled":
-        return
-    if outcome.status == "sent":
-        suffix = ""
-        if outcome.memory_id:
-            suffix = " ({})".format(outcome.memory_id)
-        sys.stdout.write(
-            "pushed {}{}\n".format(outcome.event_type, suffix)
-        )
-        return
-    if outcome.status == "skipped":
-        sys.stdout.write(
-            "skipped {}: {}\n".format(outcome.event_type, outcome.reason)
-        )
-        return
-    if outcome.status == "failed":
-        sys.stdout.write(
-            "push {} failed: {}\n".format(
-                outcome.event_type, outcome.reason
-            )
-        )
+def _cmd_hive_revoke(args: argparse.Namespace) -> int:
+    cfg = load_config()
+    if not cfg.enabled:
+        return 0
+    hive_id = (args.hive_id or "").strip()
+    key_prefix = (args.key_prefix or "").strip()
+    if not hive_id or not key_prefix:
+        sys.stdout.write("hive revoke: hive_id and key_prefix are required\n")
+        return 0
+    try:
+        client = EngramClient(cfg)
+        result = client.revoke_hive_access(hive_id=hive_id, key_prefix=key_prefix)
+    except Exception:  # noqa: BLE001
+        return 0
+    if result is None:
+        sys.stdout.write("hive revoke: api error\n")
+        return 0
+    sys.stdout.write(
+        "hive revoke ok hive={} key_prefix={}\n".format(hive_id, key_prefix)
+    )
+    return 0
 
 
 # ----------------------------------------------------------------------
@@ -587,12 +400,6 @@ def main(argv: Optional[List[str]] = None) -> int:
         return _cmd_status(ns)
     if ns.command == "install":
         return _cmd_install(ns)
-    if ns.command == "push":
-        return _cmd_push(ns)
-    if ns.command == "push-commit":
-        return _cmd_push_commit(ns)
-    if ns.command == "push-test":
-        return _cmd_push_test(ns)
     if ns.command == "hive":
         return _cmd_hive(ns)
 

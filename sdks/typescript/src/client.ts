@@ -5,7 +5,7 @@
  * engram-cloud-api/api.py. The translation from camelCase public
  * options to snake_case wire format is explicit on a per-method
  * basis rather than automatic, because some camelCase names (topK →
- * limit, shareWith → share_with) don't map by simple case conversion.
+ * limit) don't map by simple case conversion.
  */
 
 import {
@@ -17,15 +17,17 @@ import {
 } from "./errors.js";
 import { FetchLike, HttpClient } from "./http.js";
 import type {
-  AddHiveMemberOptions,
-  AddHiveMemberResponse,
   CreateTeamOptions,
   FeedbackOptions,
   FeedbackResponse,
   ForgetResponse,
+  GrantHiveAccessOptions,
+  GrantHiveAccessResponse,
   HealthResponse,
+  HiveGrant,
+  ListHiveGrantsResponse,
   ListTeamsResponse,
-  RemoveHiveMemberResponse,
+  RevokeHiveAccessResponse,
   SearchOptions,
   SearchResponse,
   StoreOptions,
@@ -111,13 +113,7 @@ export class EngramClient {
   // ─── Memory ────────────────────────────────────────────────────────
 
   /**
-   * Store a memory. Hits `POST /v1/store` (api.py L2425).
-   *
-   * `shareWith` accepts scope strings of the form `"hive:<uuid>"`.
-   * Passing a hive the caller isn't a member of raises
-   * `EngramAPIError` with status 403. Partial writes are not
-   * possible — server fails the whole call if any hive fanout fails
-   * (api.py L2485-L2504).
+   * Store a memory. Hits `POST /v1/store`.
    */
   async store(opts: StoreOptions): Promise<StoreResponse> {
     if (!opts.text) {
@@ -128,14 +124,11 @@ export class EngramClient {
     if (opts.importance !== undefined) body.importance = opts.importance;
     if (opts.metadata !== undefined) body.metadata = opts.metadata;
     if (opts.collection !== undefined) body.collection = opts.collection;
-    if (opts.shareWith !== undefined) body.share_with = opts.shareWith;
 
     return this.http.request<StoreResponse>({
       method: "POST",
       path: "/v1/store",
       body,
-      // Not retry-safe: a retry after server-side accept would create
-      // a duplicate memory. See http.ts comment.
       retryOn5xx: false,
     });
   }
@@ -252,50 +245,64 @@ export class EngramClient {
   }
 
   /**
-   * Add a user to a hive. Hits `POST /v1/hives/{hive_id}/members`
-   * (api.py L3014). Role defaults server-side to "member". Caller
-   * must already be owner or admin (api.py L3023-L3027).
+   * Grant an API key access to a hive.
+   * Hits `POST /v1/hives/{hive_id}/grants`.
    */
-  async addHiveMember(
+  async grantHiveAccess(
     hiveId: string,
-    opts: AddHiveMemberOptions,
-  ): Promise<AddHiveMemberResponse> {
+    opts: GrantHiveAccessOptions,
+  ): Promise<GrantHiveAccessResponse> {
     if (!hiveId) {
-      throw new EngramError("addHiveMember() requires a hiveId.");
+      throw new EngramError("grantHiveAccess() requires a hiveId.");
     }
-    if (!opts.userId) {
-      throw new EngramError("addHiveMember() requires { userId }.");
+    if (!opts.keyPrefix) {
+      throw new EngramError("grantHiveAccess() requires { keyPrefix }.");
     }
-    const body: Record<string, unknown> = { user_id: opts.userId };
-    if (opts.role !== undefined) body.role = opts.role;
+    const body: Record<string, unknown> = { key_prefix: opts.keyPrefix };
+    if (opts.permission !== undefined) body.permission = opts.permission;
 
-    return this.http.request<AddHiveMemberResponse>({
+    return this.http.request<GrantHiveAccessResponse>({
       method: "POST",
-      path: `/v1/hives/${encodeURIComponent(hiveId)}/members`,
+      path: `/v1/hives/${encodeURIComponent(hiveId)}/grants`,
       body,
       retryOn5xx: false,
     });
   }
 
   /**
-   * Remove a user from a hive. Hits
-   * `DELETE /v1/hives/{hive_id}/members/{user_id}` (api.py L3087).
-   * Cannot remove the owner — server returns 400 (api.py L3123-L3130).
+   * Revoke an API key's access to a hive.
+   * Hits `DELETE /v1/hives/{hive_id}/grants/{key_prefix}`.
    */
-  async removeHiveMember(
+  async revokeHiveAccess(
     hiveId: string,
-    userId: string,
-  ): Promise<RemoveHiveMemberResponse> {
-    if (!hiveId || !userId) {
+    keyPrefix: string,
+  ): Promise<RevokeHiveAccessResponse> {
+    if (!hiveId || !keyPrefix) {
       throw new EngramError(
-        "removeHiveMember() requires (hiveId, userId).",
+        "revokeHiveAccess() requires (hiveId, keyPrefix).",
       );
     }
-    return this.http.request<RemoveHiveMemberResponse>({
+    return this.http.request<RevokeHiveAccessResponse>({
       method: "DELETE",
-      path: `/v1/hives/${encodeURIComponent(hiveId)}/members/${encodeURIComponent(userId)}`,
+      path: `/v1/hives/${encodeURIComponent(hiveId)}/grants/${encodeURIComponent(keyPrefix)}`,
       retryOn5xx: false,
     });
+  }
+
+  /**
+   * List grants for a hive.
+   * Hits `GET /v1/hives/{hive_id}/grants`.
+   */
+  async listHiveGrants(hiveId: string): Promise<HiveGrant[]> {
+    if (!hiveId) {
+      throw new EngramError("listHiveGrants() requires a hiveId.");
+    }
+    const res = await this.http.request<ListHiveGrantsResponse>({
+      method: "GET",
+      path: `/v1/hives/${encodeURIComponent(hiveId)}/grants`,
+      retryOn5xx: true,
+    });
+    return res.grants ?? [];
   }
 
   // ─── System ────────────────────────────────────────────────────────

@@ -80,50 +80,6 @@ class EngramClient:
         except (httpx.HTTPError, OSError):
             return False
 
-    def store_memory(
-        self,
-        content: str,
-        metadata: Optional[Dict[str, Any]] = None,
-        classification: Optional[str] = None,
-        collection: str = "agent-memory",
-        importance: float = 0.5,
-        share_with: Optional[List[str]] = None,
-    ) -> Optional[Dict[str, Any]]:
-        """POST /v1/store. Returns the decoded response dict on success,
-        ``None`` on any failure. Never raises.
-
-        The cloud ``StoreRequest`` model uses ``text`` for the body and
-        ``category`` for classification, so we map here once and keep
-        the caller's vocabulary (``content`` / ``classification``)
-        closer to how we talk about events in the bridge layer.
-
-        ``share_with`` forwards the Wave 3 hive fanout list. Each entry
-        should be a ``"hive:<hive_id>"`` scope string; the cloud
-        validates membership and returns 403 for any hive the caller
-        isn't in.
-        """
-        payload: Dict[str, Any] = {
-            "text": content,
-            "category": classification or "other",
-            "importance": float(importance),
-            "metadata": metadata or {},
-            "collection": collection,
-        }
-        if share_with:
-            payload["share_with"] = list(share_with)
-        try:
-            with httpx.Client(timeout=self._timeout) as http:
-                resp = http.post(
-                    self._url("/v1/store"),
-                    headers=self._headers(),
-                    json=payload,
-                )
-                resp.raise_for_status()
-                body = resp.json()
-        except (httpx.HTTPError, OSError, ValueError):
-            return None
-        return body if isinstance(body, dict) else None
-
     def search(
         self,
         query: str,
@@ -215,24 +171,52 @@ class EngramClient:
             return None
         return body if isinstance(body, dict) else None
 
-    def add_hive_member(
-        self,
-        hive_id: str,
-        user_id: str,
-        role: str = "member",
-    ) -> Optional[Dict[str, Any]]:
-        """POST /v1/hives/{hive_id}/members. Returns the decoded
-        membership dict, or ``None`` on failure. Never raises."""
-        payload = {"user_id": user_id, "role": role}
+    def grant_hive_access(self, hive_id: str, key_prefix: str, permission: str = "readwrite"):
+        """POST /v1/hives/{hive_id}/grants"""
         try:
             with httpx.Client(timeout=self._timeout) as http:
                 resp = http.post(
-                    self._url("/v1/hives/{}/members".format(hive_id)),
+                    self._url("/v1/hives/{}/grants".format(hive_id)),
+                    json={"key_prefix": key_prefix, "permission": permission},
                     headers=self._headers(),
-                    json=payload,
+                    timeout=self._timeout,
                 )
-                resp.raise_for_status()
-                body = resp.json()
+                if resp.status_code >= 400:
+                    return None
+                return resp.json()
         except (httpx.HTTPError, OSError, ValueError):
             return None
-        return body if isinstance(body, dict) else None
+
+    def revoke_hive_access(self, hive_id: str, key_prefix: str):
+        """DELETE /v1/hives/{hive_id}/grants/{key_prefix}"""
+        try:
+            with httpx.Client(timeout=self._timeout) as http:
+                resp = http.delete(
+                    self._url("/v1/hives/{}/grants/{}".format(hive_id, key_prefix)),
+                    headers=self._headers(),
+                    timeout=self._timeout,
+                )
+                if resp.status_code >= 400:
+                    return None
+                return resp.json()
+        except (httpx.HTTPError, OSError, ValueError):
+            return None
+
+    def list_hive_grants(self, hive_id: str):
+        """GET /v1/hives/{hive_id}/grants"""
+        try:
+            with httpx.Client(timeout=self._timeout) as http:
+                resp = http.get(
+                    self._url("/v1/hives/{}/grants".format(hive_id)),
+                    headers=self._headers(),
+                    timeout=self._timeout,
+                )
+                if resp.status_code >= 400:
+                    return None
+                body = resp.json()
+            grants = body.get("grants")
+            if not isinstance(grants, list):
+                return None
+            return [g for g in grants if isinstance(g, dict)]
+        except (httpx.HTTPError, OSError, ValueError):
+            return None

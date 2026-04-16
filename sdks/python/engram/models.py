@@ -40,10 +40,7 @@ class StoreRequest:
     """Body for ``POST /v1/store``.
 
     ``text`` is the only required field. ``category`` defaults to
-    ``"other"`` server-side if omitted. ``share_with`` is the Wave 3
-    hive fanout list; each entry must be ``"hive:<hive_id>"`` and the
-    caller must be a member of every named hive or the server returns
-    HTTP 403 with no partial write.
+    ``"other"`` server-side if omitted.
     """
 
     text: str
@@ -51,7 +48,6 @@ class StoreRequest:
     importance: Optional[float] = None
     metadata: Optional[Dict[str, Any]] = None
     collection: Optional[str] = None
-    share_with: Optional[List[str]] = None
 
     def to_payload(self) -> Dict[str, Any]:
         """Drop ``None`` fields so the server sees omission, not null.

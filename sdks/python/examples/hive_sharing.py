@@ -1,15 +1,13 @@
-"""End-to-end hive sharing flow.
+"""End-to-end hive grant-based access flow.
 
-Creates a hive, adds a member, stores a memory into it, and then
-searches within the hive scope. The target user id is read from
-argv[1] so the script doesn't hard-code another account.
+Creates a hive, grants an API key prefix access, searches within the
+hive scope, and then revokes access.
 
     export ENGRAM_API_KEY=pr_live_...
-    python examples/hive_sharing.py <invitee_user_uuid>
+    python examples/hive_sharing.py <key_prefix_to_grant>
 
-If the invitee hasn't signed up yet, the add step returns a 404 —
-the SDK surfaces it as ``EngramAPIError`` with status 404 and the
-script prints a readable message before exiting.
+The key_prefix is the first few characters of an API key you want to
+grant access to (e.g. "eng_live_abc").
 """
 
 from __future__ import annotations
@@ -25,9 +23,9 @@ from engram import (
 
 def main(argv: list[str]) -> int:
     if len(argv) < 2:
-        print("usage: python hive_sharing.py <invitee_user_uuid>", file=sys.stderr)
+        print("usage: python hive_sharing.py <key_prefix>", file=sys.stderr)
         return 2
-    invitee = argv[1]
+    key_prefix = argv[1]
 
     client = EngramClient()
     try:
@@ -35,32 +33,19 @@ def main(argv: list[str]) -> int:
         hive = client.create_hive(name="Platform Ops", slug="platform-ops-demo")
         print("[create]  hive={} slug={}".format(hive.id, hive.slug))
 
-        # 2. Invite a second human.
-        try:
-            client.add_hive_member(hive.id, user_id=invitee, role="member")
-            print("[add]     member={}".format(invitee))
-        except EngramAPIError as exc:
-            if exc.status_code == 404:
-                print(
-                    "Invitee {} not found — they need to sign up first.".format(invitee),
-                    file=sys.stderr,
-                )
-                return 1
-            raise
+        # 2. Grant access to an API key prefix.
+        client.grant_hive_access(hive.id, key_prefix=key_prefix, permission="readwrite")
+        print("[grant]   key_prefix={} permission=readwrite".format(key_prefix))
 
-        # 3. Store into both the personal collection and the hive one
-        #    in a single call. The cloud fans the write out atomically —
-        #    if the hive write fails the personal write rolls back too.
-        stored = client.store(
-            "Our primary queue is SQS FIFO as of 2025-Q3",
-            category="decisions",
-            importance=0.8,
-            share_with=["hive:{}".format(hive.id)],
-        )
-        print("[store]   id={} status={}".format(stored.id, stored.status))
+        # 3. List grants to verify.
+        grants = client.list_hive_grants(hive.id)
+        print("[grants]  {} active grants".format(len(grants)))
+        for g in grants:
+            print("  - prefix={} permission={}".format(
+                g.get("key_prefix", "?"), g.get("permission", "?")
+            ))
 
-        # 4. Search within the hive scope — should return the memory we
-        #    just shared.
+        # 4. Search within the hive scope.
         scope = "hive:{}".format(hive.id)
         hits = client.search(
             "what messaging system does the platform hive use",
@@ -71,11 +56,16 @@ def main(argv: list[str]) -> int:
         for i, hit in enumerate(hits.results, start=1):
             print("  {}. {:.2f}  {}".format(i, hit.score, hit.text[:100]))
 
-        # 5. List every hive the caller is in, just to sanity-check.
+        # 5. List every hive the caller has access to.
         hives = client.list_hives()
-        print("[list]    caller is a member of {} hives".format(len(hives)))
+        print("[list]    caller has access to {} hives".format(len(hives)))
         for t in hives:
             print("  - {} ({}) role={}".format(t.name, t.slug, t.role or "?"))
+
+        # 6. Revoke access.
+        client.revoke_hive_access(hive.id, key_prefix=key_prefix)
+        print("[revoke]  key_prefix={}".format(key_prefix))
+
     except EngramError as exc:
         print("Engram call failed: {}".format(exc), file=sys.stderr)
         return 1

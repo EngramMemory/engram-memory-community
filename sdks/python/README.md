@@ -60,12 +60,11 @@ for result in hits.results:
     print(f"{result.score:.2f}  {result.text}")
 ```
 
-## Hive sharing (Wave 3)
+## Hive access (grant-based)
 
-Create a hive, store a memory into it, then search within the hive
-scope. Every hive operation is authorized server-side by membership —
-an unauthorized scope raises `EngramAPIError` with status 403 and no
-partial write.
+Hives are API-key-based access groups. Grant or revoke access by API
+key prefix. An unauthorized scope raises `EngramAPIError` with status
+403.
 
 ```python
 from engram import EngramClient
@@ -73,20 +72,19 @@ from engram import EngramClient
 client = EngramClient()
 
 hive = client.create_hive(name="Platform Ops", slug="platform-ops")
-client.add_hive_member(hive.id, user_id="<other_user_uuid>", role="member")
+client.grant_hive_access(hive.id, key_prefix="eng_live_abc", permission="readwrite")
 
-# Personal + hive fanout in a single store.
-client.store(
-    "We switched the primary queue to SQS FIFO last quarter",
-    category="decisions",
-    share_with=[f"hive:{hive.id}"],
-)
+# List grants on a hive.
+grants = client.list_hive_grants(hive.id)
 
-# Search the hive collection instead of your personal one.
+# Search the hive collection.
 hits = client.search(
     "what messaging system do we use",
     scope=f"hive:{hive.id}",
 )
+
+# Revoke access.
+client.revoke_hive_access(hive.id, key_prefix="eng_live_abc")
 ```
 
 ## Feedback loop
@@ -191,8 +189,9 @@ EngramClient(
 | `feedback(query, selected, rejected)`| `POST /v1/feedback`                            |
 | `create_hive(name, slug)`            | `POST /v1/hives`                               |
 | `list_hives()`                       | `GET /v1/hives`                                |
-| `add_hive_member(hive_id, user_id)`  | `POST /v1/hives/{hive_id}/members`             |
-| `remove_hive_member(hive_id, user_id)` | `DELETE /v1/hives/{hive_id}/members/{user_id}` |
+| `grant_hive_access(hive_id, key_prefix)` | `POST /v1/hives/{hive_id}/grants`          |
+| `revoke_hive_access(hive_id, key_prefix)` | `DELETE /v1/hives/{hive_id}/grants/{key_prefix}` |
+| `list_hive_grants(hive_id)`          | `GET /v1/hives/{hive_id}/grants`               |
 | `health()`                           | `GET /v1/health`                               |
 
 See `examples/` for runnable end-to-end snippets.

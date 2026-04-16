@@ -18,17 +18,19 @@ export {
 } from "./errors.js";
 
 export type {
-  AddHiveMemberOptions,
-  AddHiveMemberResponse,
   CreateTeamOptions,
   FeedbackOptions,
   FeedbackRequestBody,
   FeedbackResponse,
   ForgetRequestBody,
   ForgetResponse,
+  GrantHiveAccessOptions,
+  GrantHiveAccessResponse,
   HealthResponse,
+  HiveGrant,
+  ListHiveGrantsResponse,
   ListTeamsResponse,
-  RemoveHiveMemberResponse,
+  RevokeHiveAccessResponse,
   SearchOptions,
   SearchRequestBody,
   SearchResponse,

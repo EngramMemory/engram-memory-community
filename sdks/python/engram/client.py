@@ -253,23 +253,13 @@ class EngramClient:
         category: Optional[str] = None,
         importance: float = 0.5,
         metadata: Optional[Dict[str, Any]] = None,
-        share_with: Optional[List[str]] = None,
     ) -> StoreResponse:
-        """Persist a memory via ``POST /v1/store``.
-
-        ``share_with`` is a list of hive scope strings — each entry
-        must be ``"hive:<hive_id>"``. The cloud verifies membership
-        before writing and returns 403 (raised as
-        :class:`EngramAPIError`) for any hive the caller isn't in.
-        There is no partial-write: if one hive in the list fails,
-        nothing is stored.
-        """
+        """Persist a memory via ``POST /v1/store``."""
         req = StoreRequest(
             text=text,
             category=category,
             importance=importance,
             metadata=metadata,
-            share_with=share_with,
         )
         raw = self._transport.request("POST", "/v1/store", json_body=req.to_payload())
         return _coerce_store_response(raw)
@@ -364,38 +354,40 @@ class EngramClient:
         raw = self._transport.request("GET", "/v1/hives")
         return _coerce_hive_list(raw)
 
-    def add_hive_member(
+    def grant_hive_access(
         self,
         hive_id: str,
-        user_id: str,
-        role: str = "member",
-    ) -> None:
-        """Add a user to a hive via ``POST /v1/hives/{hive_id}/members``.
-
-        Caller must be ``owner`` or ``admin``. ``role`` must be
-        ``"admin"`` or ``"member"`` — owner transfer is a separate
-        operation (not exposed by this method) and will be rejected.
-        """
-        self._transport.request(
+        key_prefix: str,
+        permission: str = "readwrite",
+    ) -> Dict[str, Any]:
+        """Grant an API key access to a hive via ``POST /v1/hives/{hive_id}/grants``."""
+        raw = self._transport.request(
             "POST",
-            "/v1/hives/{}/members".format(hive_id),
-            json_body={"user_id": user_id, "role": role},
+            "/v1/hives/{}/grants".format(hive_id),
+            json_body={"key_prefix": key_prefix, "permission": permission},
         )
-        return None
+        return raw if isinstance(raw, dict) else {}
 
-    def remove_hive_member(self, hive_id: str, user_id: str) -> None:
-        """Remove a user from a hive via
-        ``DELETE /v1/hives/{hive_id}/members/{user_id}``.
-
-        Caller must be ``owner`` or ``admin``. The owner can't remove
-        themselves — the cloud returns 400 in that case and the SDK
-        surfaces it as :class:`EngramAPIError`.
-        """
-        self._transport.request(
+    def revoke_hive_access(self, hive_id: str, key_prefix: str) -> Dict[str, Any]:
+        """Revoke an API key's access to a hive via
+        ``DELETE /v1/hives/{hive_id}/grants/{key_prefix}``."""
+        raw = self._transport.request(
             "DELETE",
-            "/v1/hives/{}/members/{}".format(hive_id, user_id),
+            "/v1/hives/{}/grants/{}".format(hive_id, key_prefix),
         )
-        return None
+        return raw if isinstance(raw, dict) else {}
+
+    def list_hive_grants(self, hive_id: str) -> List[Dict[str, Any]]:
+        """List grants for a hive via ``GET /v1/hives/{hive_id}/grants``."""
+        raw = self._transport.request(
+            "GET",
+            "/v1/hives/{}/grants".format(hive_id),
+        )
+        if isinstance(raw, dict):
+            grants = raw.get("grants", [])
+            if isinstance(grants, list):
+                return [g for g in grants if isinstance(g, dict)]
+        return []
 
     # ------------------------------------------------------------------
     # System
@@ -460,14 +452,12 @@ class AsyncEngramClient:
         category: Optional[str] = None,
         importance: float = 0.5,
         metadata: Optional[Dict[str, Any]] = None,
-        share_with: Optional[List[str]] = None,
     ) -> StoreResponse:
         req = StoreRequest(
             text=text,
             category=category,
             importance=importance,
             metadata=metadata,
-            share_with=share_with,
         )
         raw = await self._transport.request(
             "POST", "/v1/store", json_body=req.to_payload()
@@ -532,25 +522,40 @@ class AsyncEngramClient:
         raw = await self._transport.request("GET", "/v1/hives")
         return _coerce_hive_list(raw)
 
-    async def add_hive_member(
+    async def grant_hive_access(
         self,
         hive_id: str,
-        user_id: str,
-        role: str = "member",
-    ) -> None:
-        await self._transport.request(
+        key_prefix: str,
+        permission: str = "readwrite",
+    ) -> Dict[str, Any]:
+        """Grant an API key access to a hive via ``POST /v1/hives/{hive_id}/grants``."""
+        raw = await self._transport.request(
             "POST",
-            "/v1/hives/{}/members".format(hive_id),
-            json_body={"user_id": user_id, "role": role},
+            "/v1/hives/{}/grants".format(hive_id),
+            json_body={"key_prefix": key_prefix, "permission": permission},
         )
-        return None
+        return raw if isinstance(raw, dict) else {}
 
-    async def remove_hive_member(self, hive_id: str, user_id: str) -> None:
-        await self._transport.request(
+    async def revoke_hive_access(self, hive_id: str, key_prefix: str) -> Dict[str, Any]:
+        """Revoke an API key's access to a hive via
+        ``DELETE /v1/hives/{hive_id}/grants/{key_prefix}``."""
+        raw = await self._transport.request(
             "DELETE",
-            "/v1/hives/{}/members/{}".format(hive_id, user_id),
+            "/v1/hives/{}/grants/{}".format(hive_id, key_prefix),
         )
-        return None
+        return raw if isinstance(raw, dict) else {}
+
+    async def list_hive_grants(self, hive_id: str) -> List[Dict[str, Any]]:
+        """List grants for a hive via ``GET /v1/hives/{hive_id}/grants``."""
+        raw = await self._transport.request(
+            "GET",
+            "/v1/hives/{}/grants".format(hive_id),
+        )
+        if isinstance(raw, dict):
+            grants = raw.get("grants", [])
+            if isinstance(grants, list):
+                return [g for g in grants if isinstance(g, dict)]
+        return []
 
     # ------------------------------------------------------------------
     # System

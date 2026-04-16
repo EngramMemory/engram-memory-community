@@ -1,18 +1,18 @@
 /**
- * Hive-sharing example — Wave 3 APIs.
+ * Hive grant-based access example.
  *
- * Demonstrates the full hive lifecycle:
+ * Demonstrates the grant-based hive lifecycle:
  *   1. Create a hive (caller becomes owner)
- *   2. Add a member by their user_id
- *   3. Store a memory into the hive's scope via `shareWith`
+ *   2. Grant an API key prefix access to the hive
+ *   3. List grants to verify
  *   4. Search the hive scope via `scope: "hive:<uuid>"`
- *   5. Remove the member (optional cleanup)
+ *   5. Revoke the grant (cleanup)
  *
  * Run with:
  *   ENGRAM_API_KEY=pr_live_... npx tsx examples/hive-sharing.ts
  */
 
-import { EngramClient, EngramAPIError } from "../src/index.js";
+import { EngramClient } from "../src/index.js";
 
 async function main(): Promise<void> {
   const apiKey = process.env.ENGRAM_API_KEY;
@@ -23,47 +23,34 @@ async function main(): Promise<void> {
   const client = new EngramClient({ apiKey });
 
   // 1. Create the hive. Slug must be 3-48 chars, lowercase alphanumerics
-  //    and hyphens. The caller's own user becomes owner automatically.
+  //    and hyphens. The caller's own key becomes owner automatically.
   const hive = await client.createTeam({
     name: "Platform Hive",
     slug: `platform-${Date.now().toString(36)}`,
   });
   console.log("Hive created:", hive.id, hive.slug);
 
-  // 2. Add a second user. You need their Engram user UUID (not email).
-  //    This call requires the caller to be owner or admin.
-  const collaboratorId = process.env.COLLAB_USER_ID;
-  if (collaboratorId) {
-    try {
-      const added = await client.addHiveMember(hive.id, {
-        userId: collaboratorId,
-        role: "member",
-      });
-      console.log("Added:", added.user_id, "as", added.role);
-    } catch (err) {
-      if (err instanceof EngramAPIError && err.status === 404) {
-        console.warn("User not found, skipping.");
-      } else {
-        throw err;
-      }
+  // 2. Grant access to another API key prefix. The key_prefix is the
+  //    first few characters of the API key you want to grant access to.
+  const keyPrefix = process.env.GRANT_KEY_PREFIX;
+  if (keyPrefix) {
+    const grant = await client.grantHiveAccess(hive.id, {
+      keyPrefix,
+      permission: "readwrite",
+    });
+    console.log("Granted:", grant.key_prefix, "permission:", grant.permission);
+
+    // 3. List all grants on this hive.
+    const grants = await client.listHiveGrants(hive.id);
+    console.log(`Hive has ${grants.length} grant(s).`);
+    for (const g of grants) {
+      console.log(`  - ${g.key_prefix} (${g.permission})`);
     }
   }
 
-  // 3. Store a memory that fans out to the hive collection. The
-  //    primary write still lands in the caller's personal collection;
-  //    hive fanout happens alongside with the same doc_id so it's
-  //    addressable from either scope.
-  const shared = await client.store({
-    text: "Staging redis password rotates every 90 days — script in infra/rotate.sh.",
-    category: "runbook",
-    importance: 0.8,
-    shareWith: [`hive:${hive.id}`],
-  });
-  console.log("Stored in personal + hive:", shared.id);
-
-  // 4. Search the hive's collection specifically. Scope routes the
-  //    search engine to the hive's physical Qdrant collection and
-  //    rechecks membership before returning anything.
+  // 4. Search the hive's collection. Scope routes the search engine
+  //    to the hive's physical Qdrant collection and rechecks access
+  //    before returning anything.
   const teamHits = await client.search({
     query: "how do I rotate the redis password",
     scope: `hive:${hive.id}`,
@@ -71,12 +58,10 @@ async function main(): Promise<void> {
   });
   console.log(`Hive scope returned ${teamHits.results.length} result(s).`);
 
-  // 5. Cleanup — remove the collaborator if we added one. Owners
-  //    cannot remove themselves; for a full tear-down you'd delete
-  //    the hive entirely (not yet exposed in this SDK surface).
-  if (collaboratorId) {
-    const removed = await client.removeHiveMember(hive.id, collaboratorId);
-    console.log("Removed:", removed.user_id, "=>", removed.removed);
+  // 5. Cleanup — revoke the grant if we added one.
+  if (keyPrefix) {
+    const revoked = await client.revokeHiveAccess(hive.id, keyPrefix);
+    console.log("Revoked:", revoked.key_prefix, "=>", revoked.revoked);
   }
 }
 

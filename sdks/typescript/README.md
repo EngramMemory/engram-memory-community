@@ -43,8 +43,8 @@ await client.forget(id);
 ## Features
 
 - **Memory ops** — `store`, `search`, `forget`, `feedback`
-- **Hive scopes (Wave 3)** — `createTeam`, `listTeams`, `addHiveMember`,
-  `removeHiveMember`, plus `shareWith` on store and `scope` on search
+- **Hive access** — `createTeam`, `listTeams`, `grantHiveAccess`,
+  `revokeHiveAccess`, `listHiveGrants`, plus `scope` on search
 - **Error classification** — `EngramAuthError`, `EngramRateLimitError`,
   `EngramAPIError`, `EngramConnectionError`
 - **Retries with backoff** — network errors and transient 5xx retry
@@ -87,15 +87,17 @@ try {
 ```ts
 const hive = await client.createTeam({ name: "Platform", slug: "platform" });
 
-await client.store({
-  text: "Staging redis rotates every 90 days.",
-  shareWith: [`hive:${hive.id}`],
-});
+// Grant an API key prefix access to the hive.
+await client.grantHiveAccess(hive.id, { keyPrefix: "eng_live_abc" });
 
+// Search the hive collection.
 const { results } = await client.search({
   query: "redis rotation schedule",
   scope: `hive:${hive.id}`,
 });
+
+// Revoke access.
+await client.revokeHiveAccess(hive.id, "eng_live_abc");
 ```
 
 ## Feedback loop

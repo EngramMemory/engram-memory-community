@@ -37,9 +37,6 @@ dev = [
 [project.scripts]
 engram-bridge = "bridge.cli:main"
 
-[project.entry-points.pytest11]
-engram_bridge = "bridge.pytest_plugin"
-
 [project.urls]
 Homepage = "https://engrammemory.ai"
 Source = "https://github.com/engram-memory/engram-memory-community"
