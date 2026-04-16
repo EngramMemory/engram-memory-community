@@ -1,21 +1,145 @@
-MIT License
+Business Source License 1.1 (MongoDB-Style Variant)
 
-Copyright (c) 2026 EngramMemory
+License text copyright (c) 2020 MariaDB Corporation Ab, All Rights Reserved.
+"Business Source License" is a trademark of MariaDB Corporation Ab.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Licensor:
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+Engram Memory AI, LLC
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Licensed Work:
+
+The Licensed Work is the software known as Engram Memory Community, available at:
+https://github.com/EngramMemory/engram-memory-community
+
+The Licensed Work is (c) 2026 Engram Memory AI, LLC.
+
+Additional Use Grant:
+
+You may use, modify, and distribute the Licensed Work for any purpose except as expressly restricted below.
+
+Restrictions on Production Use
+
+You may not use the Licensed Work, or any derivative of it, to provide a hosted, managed, or SaaS offering to third parties without a commercial license from Engram Memory AI, LLC.
+
+Service Restriction (MongoDB-Style Clause)
+
+You may not offer or provide the Licensed Work as a service to third parties if that service:
+
+- includes any functionality of the Licensed Work, or
+- derives value from the Licensed Work, or
+- exposes APIs, interfaces, or systems backed by the Licensed Work
+
+unless you open source the entire service stack under an OSI-approved license, including but not limited to:
+
+- all management software
+- orchestration layers
+- user interfaces
+- APIs
+- automation tools
+- deployment infrastructure
+- monitoring and scaling components
+
+This requirement applies whether the Licensed Work is used directly or indirectly.
+
+Competitive Offering Definition
+
+A "Competitive Offering" is any Product or service that:
+
+- is offered to third parties (free or paid), and
+- uses, integrates, or is derived from the Licensed Work, and
+- overlaps substantially with the functionality of Engram Memory AI, LLC's products or services
+
+This includes:
+
+- hosted AI memory platforms
+- context persistence services
+- LLM memory backends
+- cognitive infrastructure systems
+- or similar systems built on or derived from the Licensed Work
+
+Embedded Use Restriction
+
+You may not:
+
+- embed the Licensed Work into a Competitive Offering, or
+- distribute it as part of a managed platform,
+- or require it as a dependency for a competing system
+
+without complying with the Service Restriction or obtaining a commercial license.
+
+Internal Use Exception
+
+You may freely use the Licensed Work:
+
+- within your organization
+- for internal business purposes
+- for research, experimentation, or non-commercial deployments
+
+This includes use by affiliates under common control.
+
+Change Date:
+
+Four (4) years from the date a version of the Licensed Work is first publicly released.
+
+Change License:
+
+Apache License, Version 2.0
+
+Terms
+
+The Licensor grants you the right to:
+
+- copy, modify, and create derivative works
+- redistribute the Licensed Work
+- use the Licensed Work for internal and non-service-based production use
+
+Subject to the restrictions described in this License.
+
+Conversion to Open Source
+
+On the Change Date, this Licensed Work will automatically become available under the terms of the Change License.
+
+All restrictions in this License will terminate for that version at that time.
+
+Compliance
+
+If you wish to:
+
+- offer the Licensed Work as a service, or
+- include it in a Competitive Offering without open-sourcing your full stack
+
+you must obtain a commercial license from Engram Memory AI, LLC.
+
+Distribution
+
+This License applies to:
+
+- all copies of the Licensed Work
+- all modified versions
+- all derivative works
+
+You must include this License in all distributions.
+
+Each version has its own Change Date.
+
+Termination
+
+Any violation of this License automatically terminates your rights under it.
+
+Trademarks
+
+This License does not grant rights to use the trademarks, service marks, or logos of Engram Memory AI, LLC.
+
+Disclaimer
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE LICENSED WORK IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, INCLUDING:
+
+- MERCHANTABILITY
+- FITNESS FOR A PARTICULAR PURPOSE
+- NON-INFRINGEMENT
+
+Licensing Contact
+
+For commercial licensing, contact:
+licensing@engrammemory.ai

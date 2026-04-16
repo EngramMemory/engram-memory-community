@@ -18,7 +18,7 @@
     "@types/uuid": "^9.0.0",
     "typescript": "^5.4.0"
   },
-  "license": "MIT",
+  "license": "BSL-1.1",
   "author": "Engram Memory",
   "repository": {
     "type": "git",

@@ -9,7 +9,7 @@
 ![npm](https://img.shields.io/npm/v/engrammemory-ai?label=npm&color=10b981&style=flat-square)
 ![pypi](https://img.shields.io/pypi/v/engrammemory-ai?label=pypi&color=10b981&style=flat-square)
 ![docs](https://img.shields.io/badge/docs-engrammemory.ai-10b981?style=flat-square)
-![license](https://img.shields.io/badge/license-MIT-green?style=flat-square)
+![license](https://img.shields.io/badge/license-BSL--1.1-green?style=flat-square)
 
 </div>
 
@@ -295,4 +295,4 @@ Found a bug? Want to add a feature? PRs welcome.
 
 ## License
 
-MIT — Use freely in personal and commercial projects.
+Business Source License 1.1 — Free for internal use, research, and self-hosted deployments. Commercial/SaaS use requires a license from Engram Memory AI, LLC. Converts to Apache 2.0 after 4 years per version. See [LICENSE](LICENSE) for full terms.
