@@ -54,7 +54,7 @@ try:
     from mcp.server import NotificationOptions, Server
     from mcp.server.models import InitializationOptions
     from mcp.types import (
-        CallToolRequest, CallToolResult, TextContent, Tool,
+        CallToolRequest, CallToolResult, TextContent, Tool, ToolAnnotations,
         ListToolsRequest, ListToolsResult,
     )
 except ImportError:
@@ -106,7 +106,9 @@ class EngramMCPServer:
             return [
                 Tool(
                     name="memory_store",
+                    title="Store Memory",
                     description="Store a memory with semantic embedding (indexed into hot-tier cache and hash index)",
+                    annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True),
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -130,7 +132,9 @@ class EngramMCPServer:
                 ),
                 Tool(
                     name="memory_search",
+                    title="Search Memories",
                     description="Search memories using three-tier recall. Results include match_context to help you identify the most relevant result.",
+                    annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False),
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -147,7 +151,9 @@ class EngramMCPServer:
                 ),
                 Tool(
                     name="memory_recall",
+                    title="Recall Context",
                     description="Recall relevant memories for context injection (higher threshold, designed for auto-recall)",
+                    annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False),
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -159,7 +165,9 @@ class EngramMCPServer:
                 ),
                 Tool(
                     name="memory_forget",
+                    title="Forget Memory",
                     description="Delete a memory from all tiers (hot cache, hash index, and vector store)",
+                    annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True),
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -170,10 +178,12 @@ class EngramMCPServer:
                 ),
                 Tool(
                     name="memory_consolidate",
+                    title="Consolidate Memories",
                     description=(
                         "Find and merge near-duplicate memories. "
                         "Threshold configurable via ENGRAM_DEDUP_THRESHOLD env var."
                     ),
+                    annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True),
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -187,12 +197,14 @@ class EngramMCPServer:
                 ),
                 Tool(
                     name="memory_feedback",
+                    title="Give Feedback",
                     description=(
                         "Report which search results were useful. "
                         "After using memory_search results, call this to help Engram learn "
                         "which memories are most relevant. This improves future search accuracy "
                         "at zero cost — your model already evaluated the results."
                     ),
+                    annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False),
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -216,9 +228,11 @@ class EngramMCPServer:
                 ),
                 Tool(
                     name="memory_connect",
+                    title="Discover Connections",
                     description=(
                         "Discover cross-category connections for a memory via the entity graph."
                     ),
+                    annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False),
                     inputSchema={
                         "type": "object",
                         "properties": {
