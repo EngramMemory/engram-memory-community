@@ -6,7 +6,7 @@ the start of every agent session.
 
 **Status:** Wave 2 — read + push. The bridge now *pulls* context at
 session start and *pushes* events (manual milestones, git commits,
-green test suites) as new memories. Cross-agent sync and team scopes
+green test suites) as new memories. Cross-agent sync and hive scopes
 land in Wave 3.
 
 ---

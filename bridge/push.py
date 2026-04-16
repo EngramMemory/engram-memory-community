@@ -331,10 +331,10 @@ def push_manual(
     message short-circuits to ``skipped`` rather than writing an empty
     memory.
 
-    ``share_with`` is an optional list of ``"team:<team_id>"`` scope
+    ``share_with`` is an optional list of ``"hive:<hive_id>"`` scope
     strings. When present, the cloud API fans the write out to each
-    team's Qdrant collection in addition to the caller's personal
-    collection — every team in the list is validated for membership
+    hive's Qdrant collection in addition to the caller's personal
+    collection — every hive in the list is validated for membership
     server-side, so an unauthorized entry fails the whole push.
     """
     text = (message or "").strip()

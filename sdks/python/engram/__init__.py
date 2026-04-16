@@ -43,7 +43,7 @@ from .models import (
     SearchResult,
     StoreRequest,
     StoreResponse,
-    TeamResponse,
+    HiveResponse,
 )
 
 __version__ = SDK_VERSION
@@ -77,6 +77,6 @@ __all__ = [
     "ForgetResponse",
     "FeedbackRequest",
     "FeedbackResponse",
-    "TeamResponse",
+    "HiveResponse",
     "HealthResponse",
 ]

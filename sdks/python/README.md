@@ -3,7 +3,7 @@
 Official Python SDK for the **[Engram](https://engrammemory.ai)** cloud memory API.
 
 A thin, dependency-light client (`httpx` only) for storing and recalling
-memories, managing team-shared collections, and feeding reranking
+memories, managing hive-shared collections, and feeding reranking
 signals back to the engine. Ships both a blocking `EngramClient` and
 an `AsyncEngramClient` so you can drop it into scripts, background
 workers, or FastAPI handlers without a second SDK.
@@ -60,10 +60,10 @@ for result in hits.results:
     print(f"{result.score:.2f}  {result.text}")
 ```
 
-## Team sharing (Wave 3)
+## Hive sharing (Wave 3)
 
-Create a team, store a memory into it, then search within the team
-scope. Every team operation is authorized server-side by membership —
+Create a hive, store a memory into it, then search within the hive
+scope. Every hive operation is authorized server-side by membership —
 an unauthorized scope raises `EngramAPIError` with status 403 and no
 partial write.
 
@@ -72,20 +72,20 @@ from engram import EngramClient
 
 client = EngramClient()
 
-team = client.create_team(name="Platform Ops", slug="platform-ops")
-client.add_team_member(team.id, user_id="<other_user_uuid>", role="member")
+hive = client.create_hive(name="Platform Ops", slug="platform-ops")
+client.add_hive_member(hive.id, user_id="<other_user_uuid>", role="member")
 
-# Personal + team fanout in a single store.
+# Personal + hive fanout in a single store.
 client.store(
     "We switched the primary queue to SQS FIFO last quarter",
     category="decisions",
-    share_with=[f"team:{team.id}"],
+    share_with=[f"hive:{hive.id}"],
 )
 
-# Search the team collection instead of your personal one.
+# Search the hive collection instead of your personal one.
 hits = client.search(
     "what messaging system do we use",
-    scope=f"team:{team.id}",
+    scope=f"hive:{hive.id}",
 )
 ```
 
@@ -189,10 +189,10 @@ EngramClient(
 | `search(query, top_k, scope, ...)`   | `POST /v1/search`                              |
 | `forget(memory_id)`                  | `POST /v1/forget`                              |
 | `feedback(query, selected, rejected)`| `POST /v1/feedback`                            |
-| `create_team(name, slug)`            | `POST /v1/teams`                               |
-| `list_teams()`                       | `GET /v1/teams`                                |
-| `add_team_member(team_id, user_id)`  | `POST /v1/teams/{team_id}/members`             |
-| `remove_team_member(team_id, user_id)` | `DELETE /v1/teams/{team_id}/members/{user_id}` |
+| `create_hive(name, slug)`            | `POST /v1/hives`                               |
+| `list_hives()`                       | `GET /v1/hives`                                |
+| `add_hive_member(hive_id, user_id)`  | `POST /v1/hives/{hive_id}/members`             |
+| `remove_hive_member(hive_id, user_id)` | `DELETE /v1/hives/{hive_id}/members/{user_id}` |
 | `health()`                           | `GET /v1/health`                               |
 
 See `examples/` for runnable end-to-end snippets.

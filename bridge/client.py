@@ -97,9 +97,9 @@ class EngramClient:
         the caller's vocabulary (``content`` / ``classification``)
         closer to how we talk about events in the bridge layer.
 
-        ``share_with`` forwards the Wave 3 team fanout list. Each entry
-        should be a ``"team:<team_id>"`` scope string; the cloud
-        validates membership and returns 403 for any team the caller
+        ``share_with`` forwards the Wave 3 hive fanout list. Each entry
+        should be a ``"hive:<hive_id>"`` scope string; the cloud
+        validates membership and returns 403 for any hive the caller
         isn't in.
         """
         payload: Dict[str, Any] = {
@@ -135,7 +135,7 @@ class EngramClient:
         Callers that need to distinguish "0 results" from "API error"
         should use ``search_raw`` instead. ``scope`` passes through to
         the cloud's Wave 3 scope param (``"personal"`` or
-        ``"team:<team_id>"``).
+        ``"hive:<hive_id>"``).
         """
         try:
             return self.search_raw(query, top_k, scope=scope)
@@ -175,16 +175,16 @@ class EngramClient:
         return out
 
     # ------------------------------------------------------------------
-    # Wave 3 — teams
+    # Wave 3 — hives
     # ------------------------------------------------------------------
 
-    def list_teams(self) -> Optional[List[Dict[str, Any]]]:
-        """GET /v1/teams. Returns the decoded list, or ``None`` on
+    def list_hives(self) -> Optional[List[Dict[str, Any]]]:
+        """GET /v1/hives. Returns the decoded list, or ``None`` on
         failure. Never raises."""
         try:
             with httpx.Client(timeout=self._timeout) as http:
                 resp = http.get(
-                    self._url("/v1/teams"),
+                    self._url("/v1/hives"),
                     headers=self._headers(),
                 )
                 resp.raise_for_status()
@@ -193,19 +193,19 @@ class EngramClient:
             return None
         if not isinstance(body, dict):
             return None
-        teams = body.get("teams")
-        if not isinstance(teams, list):
+        hives = body.get("hives")
+        if not isinstance(hives, list):
             return None
-        return [t for t in teams if isinstance(t, dict)]
+        return [t for t in hives if isinstance(t, dict)]
 
-    def create_team(self, name: str, slug: str) -> Optional[Dict[str, Any]]:
-        """POST /v1/teams. Returns the decoded team dict, or ``None``
+    def create_hive(self, name: str, slug: str) -> Optional[Dict[str, Any]]:
+        """POST /v1/hives. Returns the decoded hive dict, or ``None``
         on failure. Never raises."""
         payload = {"name": name, "slug": slug}
         try:
             with httpx.Client(timeout=self._timeout) as http:
                 resp = http.post(
-                    self._url("/v1/teams"),
+                    self._url("/v1/hives"),
                     headers=self._headers(),
                     json=payload,
                 )
@@ -215,19 +215,19 @@ class EngramClient:
             return None
         return body if isinstance(body, dict) else None
 
-    def add_team_member(
+    def add_hive_member(
         self,
-        team_id: str,
+        hive_id: str,
         user_id: str,
         role: str = "member",
     ) -> Optional[Dict[str, Any]]:
-        """POST /v1/teams/{team_id}/members. Returns the decoded
+        """POST /v1/hives/{hive_id}/members. Returns the decoded
         membership dict, or ``None`` on failure. Never raises."""
         payload = {"user_id": user_id, "role": role}
         try:
             with httpx.Client(timeout=self._timeout) as http:
                 resp = http.post(
-                    self._url("/v1/teams/{}/members".format(team_id)),
+                    self._url("/v1/hives/{}/members".format(hive_id)),
                     headers=self._headers(),
                     json=payload,
                 )

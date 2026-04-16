@@ -176,23 +176,23 @@ the test runner's exit code.
 
 ---
 
-## Wiring team sharing (Wave 3)
+## Wiring hive sharing (Wave 3)
 
 ```bash
-engram-bridge team list
-engram-bridge team create "windsurf-team" --slug windsurf-team
-engram-bridge team add-member <team_uuid> <user_uuid> --role member
-engram-bridge push "picked Remix for the new app" --team <team_uuid>
-engram-bridge pull --scope team:<team_uuid>
+engram-bridge hive list
+engram-bridge hive create "windsurf-hive" --slug windsurf-hive
+engram-bridge hive add-member <hive_uuid> <user_uuid> --role member
+engram-bridge push "picked Remix for the new app" --hive <hive_uuid>
+engram-bridge pull --scope hive:<hive_uuid>
 ```
 
 If you use the `windsurf_with_memory` launcher, change its pull
-command to `engram-bridge pull --scope team:<uuid>` to pin the
-context-preload step to a specific team collection.
+command to `engram-bridge pull --scope hive:<uuid>` to pin the
+context-preload step to a specific hive collection.
 
-> **Gap:** the Engram MCP server does not yet expose team scopes.
+> **Gap:** the Engram MCP server does not yet expose hive scopes.
 > `memory_search` from inside Cascade only hits your personal
-> collection. Team reads go through the bridge CLI until a later
+> collection. Hive reads go through the bridge CLI until a later
 > wave adds `scope` as an MCP tool argument.
 
 ---

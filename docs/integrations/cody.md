@@ -119,7 +119,7 @@ Idempotent; backs up any existing hook.
 
 ```bash
 engram-bridge push "shipped Cody-driven refactor of auth layer"
-engram-bridge push "team prefers explicit factory functions" \
+engram-bridge push "hive prefers explicit factory functions" \
     --type preference
 ```
 
@@ -152,22 +152,22 @@ your stack.
 
 ---
 
-## Wiring team sharing (Wave 3)
+## Wiring hive sharing (Wave 3)
 
 ```bash
-engram-bridge team list
-engram-bridge team create "cody-team" --slug cody-team
-engram-bridge team add-member <team_uuid> <user_uuid> --role member
+engram-bridge hive list
+engram-bridge hive create "cody-hive" --slug cody-hive
+engram-bridge hive add-member <hive_uuid> <user_uuid> --role member
 engram-bridge push "picked graphql over REST for this service" \
-    --team <team_uuid>
-engram-bridge pull --scope team:<team_uuid>
+    --hive <hive_uuid>
+engram-bridge pull --scope hive:<hive_uuid>
 ```
 
-To paste team context into Cody, replace `engram-copy` in your rc
+To paste hive context into Cody, replace `engram-copy` in your rc
 file with:
 
 ```sh
-alias engram-copy-team='engram-bridge pull --scope team:<team_uuid> | pbcopy'
+alias engram-copy-hive='engram-bridge pull --scope hive:<hive_uuid> | pbcopy'
 ```
 
 > **Gap:** Cody doesn't currently expose a public MCP or hook API

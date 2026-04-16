@@ -41,8 +41,8 @@ class StoreRequest:
 
     ``text`` is the only required field. ``category`` defaults to
     ``"other"`` server-side if omitted. ``share_with`` is the Wave 3
-    team fanout list; each entry must be ``"team:<team_id>"`` and the
-    caller must be a member of every named team or the server returns
+    hive fanout list; each entry must be ``"hive:<hive_id>"`` and the
+    caller must be a member of every named hive or the server returns
     HTTP 403 with no partial write.
     """
 
@@ -94,10 +94,10 @@ class SearchRequest:
     ergonomics and maps it to ``limit`` here at the wire boundary.
 
     ``scope`` defaults to ``"personal"`` and controls which physical
-    collection the search runs against. ``"team:<team_id>"`` searches
-    a team collection after the cloud verifies membership. Wave 3
+    collection the search runs against. ``"hive:<hive_id>"`` searches
+    a hive collection after the cloud verifies membership. Wave 3
     intentionally exposes no "merged" mode — callers wanting both
-    personal and team results must issue two searches and dedupe
+    personal and hive results must issue two searches and dedupe
     client-side, which keeps the cost model transparent.
     """
 
@@ -262,16 +262,16 @@ class FeedbackResponse:
         )
 
 
-# ─── Teams ───────────────────────────────────────────────────────────
-# /v1/teams, /v1/teams/{team_id}/members (api.py L647-L663, L2871+)
+# ─── Hives ───────────────────────────────────────────────────────────
+# /v1/hives, /v1/hives/{hive_id}/members (api.py L647-L663, L2871+)
 
 
 @dataclass
-class TeamResponse:
-    """One team row from ``POST /v1/teams`` or ``GET /v1/teams``.
+class HiveResponse:
+    """One hive row from ``POST /v1/hives`` or ``GET /v1/hives``.
 
     ``role`` is only set on list responses — create returns the
-    newly-authored team without echoing the caller's role (the caller
+    newly-authored hive without echoing the caller's role (the caller
     is always ``owner`` post-create). ``created_at`` is an ISO-8601
     string on the wire; we keep it as ``str`` so dataclasses stay free
     of ``datetime`` parsing surprises across stdlib versions.
@@ -286,7 +286,7 @@ class TeamResponse:
     role: Optional[str] = None
 
     @classmethod
-    def from_dict(cls, raw: Mapping[str, Any]) -> "TeamResponse":
+    def from_dict(cls, raw: Mapping[str, Any]) -> "HiveResponse":
         return cls(**_strip(cls, raw))
 
 
@@ -331,6 +331,6 @@ __all__ = [
     "ForgetResponse",
     "FeedbackRequest",
     "FeedbackResponse",
-    "TeamResponse",
+    "HiveResponse",
     "HealthResponse",
 ]

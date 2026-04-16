@@ -85,7 +85,7 @@ _CATEGORY_PATTERNS = {
     "preference": re.compile(r"\b(prefer|like|always|never|want|love|hate|enjoy|favor|rather|choose to|tend to|usually|my favorite)\b", re.I),
     "decision": re.compile(r"\b(decided|chose|chosen|selected|will use|going with|switched to|moved to|picking|opted for|committed to|approved|rejected|went with)\b", re.I),
     "fact": re.compile(r"\b(completed|version|status|count|runs|running|deployed|migrated|installed|updated|currently|uses|located|configured|set to|costs|takes|measures|port|scheduled|launches?|occurs?|every \w+day|recurring|window|at \d+:\d+)\b", re.I),
-    "entity": re.compile(r"\b(company|team|person|project|service|app|platform|organization|department|manager|lead|owner|maintainer|vendor|client)\b", re.I),
+    "entity": re.compile(r"\b(company|hive|person|project|service|app|platform|organization|department|manager|lead|owner|maintainer|vendor|client)\b", re.I),
 }
 ```
 
@@ -121,10 +121,10 @@ Multi-head hasher with 4 heads x 12-bit hashing is too sparse. Hash collisions a
 
 ---
 
-## Priority 5: Vector Collision ("Platform team" problem)
+## Priority 5: Vector Collision ("Platform hive" problem)
 
 ### Problem
-5 of 7 R@1 misses return "The Platform team (5 engineers) owns Kubernetes infrastructure and CI/CD" as top result. This single memory is a false-positive magnet because it contains: "team", "engineers", "infrastructure", "CI/CD" — generic high-IDF terms.
+5 of 7 R@1 misses return "The Platform hive (5 engineers) owns Kubernetes infrastructure and CI/CD" as top result. This single memory is a false-positive magnet because it contains: "hive", "engineers", "infrastructure", "CI/CD" — generic high-IDF terms.
 
 ### Root cause
 BM25 sparse vectors over-weight common infrastructure terms. RRF fusion doesn't penalize memories that match too many queries (low specificity).

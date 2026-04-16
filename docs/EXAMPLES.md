@@ -113,10 +113,10 @@ memories = memory_recall("Next.js 13 App Router benefits")
 
 ## Project Manager
 
-### Team & Project Context
+### Hive & Project Context
 ```python
-# Document team structure
-memory_store("Frontend team: Sarah (lead), Mike, Jennifer - all experienced with React", 
+# Document hive structure
+memory_store("Frontend hive: Sarah (lead), Mike, Jennifer - all experienced with React", 
             category="entity", importance=0.7)
 
 memory_store("Current sprint focused on user authentication and profile management", 
@@ -133,8 +133,8 @@ memory_store("Budget constraint: must deliver MVP by end of Q2",
 ### Project Planning
 ```python
 # User: "Who should work on the authentication feature?"
-memories = memory_recall("frontend team React experience authentication")
-# Suggests Sarah's team based on skills and current focus
+memories = memory_recall("frontend hive React experience authentication")
+# Suggests Sarah's hive based on skills and current focus
 
 # User: "What are our timeline constraints?"
 memories = memory_recall("budget deadline MVP Q2")

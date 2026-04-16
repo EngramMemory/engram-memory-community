@@ -17,20 +17,20 @@ import {
 } from "./errors.js";
 import { FetchLike, HttpClient } from "./http.js";
 import type {
-  AddTeamMemberOptions,
-  AddTeamMemberResponse,
+  AddHiveMemberOptions,
+  AddHiveMemberResponse,
   CreateTeamOptions,
   FeedbackOptions,
   FeedbackResponse,
   ForgetResponse,
   HealthResponse,
   ListTeamsResponse,
-  RemoveTeamMemberResponse,
+  RemoveHiveMemberResponse,
   SearchOptions,
   SearchResponse,
   StoreOptions,
   StoreResponse,
-  TeamResponse,
+  HiveResponse,
 } from "./models.js";
 
 export interface EngramClientOptions {
@@ -52,7 +52,7 @@ export interface EngramClientOptions {
   /**
    * Max retry attempts for network errors and transient 5xx. Default: 3.
    * Note: POST endpoints that are not provably idempotent (store,
-   * forget, create-team, add/remove member) do NOT retry on 5xx
+   * forget, create-hive, add/remove member) do NOT retry on 5xx
    * regardless of this value — see http.ts for the rationale.
    */
   maxRetries?: number;
@@ -113,10 +113,10 @@ export class EngramClient {
   /**
    * Store a memory. Hits `POST /v1/store` (api.py L2425).
    *
-   * `shareWith` accepts scope strings of the form `"team:<uuid>"`.
-   * Passing a team the caller isn't a member of raises
+   * `shareWith` accepts scope strings of the form `"hive:<uuid>"`.
+   * Passing a hive the caller isn't a member of raises
    * `EngramAPIError` with status 403. Partial writes are not
-   * possible — server fails the whole call if any team fanout fails
+   * possible — server fails the whole call if any hive fanout fails
    * (api.py L2485-L2504).
    */
   async store(opts: StoreOptions): Promise<StoreResponse> {
@@ -144,7 +144,7 @@ export class EngramClient {
    * Semantic search. Hits `POST /v1/search` (api.py L2542).
    *
    * `topK` maps to the wire-level `limit` field (default 5). `scope`
-   * accepts `"personal"` or `"team:<uuid>"` — Wave 3 addition, see
+   * accepts `"personal"` or `"hive:<uuid>"` — Wave 3 addition, see
    * api.py L2574-L2587 for the routing logic.
    */
   async search(opts: SearchOptions): Promise<SearchResponse> {
@@ -216,84 +216,84 @@ export class EngramClient {
     });
   }
 
-  // ─── Teams (Wave 3) ────────────────────────────────────────────────
+  // ─── Hives (Wave 3) ────────────────────────────────────────────────
 
   /**
-   * Create a team. Hits `POST /v1/teams` (api.py L2871).
+   * Create a hive. Hits `POST /v1/hives` (api.py L2871).
    *
    * Caller becomes owner in the same transaction that creates the
-   * team row. Slug must be 3-48 chars, lowercase alphanumerics and
+   * hive row. Slug must be 3-48 chars, lowercase alphanumerics and
    * hyphens (api.py L2843, L2846-L2857).
    */
-  async createTeam(opts: CreateTeamOptions): Promise<TeamResponse> {
+  async createTeam(opts: CreateTeamOptions): Promise<HiveResponse> {
     if (!opts.name || !opts.slug) {
       throw new EngramError("createTeam() requires { name, slug }.");
     }
-    return this.http.request<TeamResponse>({
+    return this.http.request<HiveResponse>({
       method: "POST",
-      path: "/v1/teams",
+      path: "/v1/hives",
       body: { name: opts.name, slug: opts.slug },
       retryOn5xx: false,
     });
   }
 
   /**
-   * List teams the caller is a member of. Hits `GET /v1/teams`
-   * (api.py L2961). Unwraps the server's `{teams: [...]}` envelope
+   * List hives the caller is a member of. Hits `GET /v1/hives`
+   * (api.py L2961). Unwraps the server's `{hives: [...]}` envelope
    * (api.py L3011) and returns the array directly.
    */
-  async listTeams(): Promise<TeamResponse[]> {
+  async listTeams(): Promise<HiveResponse[]> {
     const res = await this.http.request<ListTeamsResponse>({
       method: "GET",
-      path: "/v1/teams",
+      path: "/v1/hives",
       retryOn5xx: true,
     });
-    return res.teams ?? [];
+    return res.hives ?? [];
   }
 
   /**
-   * Add a user to a team. Hits `POST /v1/teams/{team_id}/members`
+   * Add a user to a hive. Hits `POST /v1/hives/{hive_id}/members`
    * (api.py L3014). Role defaults server-side to "member". Caller
    * must already be owner or admin (api.py L3023-L3027).
    */
-  async addTeamMember(
-    teamId: string,
-    opts: AddTeamMemberOptions,
-  ): Promise<AddTeamMemberResponse> {
-    if (!teamId) {
-      throw new EngramError("addTeamMember() requires a teamId.");
+  async addHiveMember(
+    hiveId: string,
+    opts: AddHiveMemberOptions,
+  ): Promise<AddHiveMemberResponse> {
+    if (!hiveId) {
+      throw new EngramError("addHiveMember() requires a hiveId.");
     }
     if (!opts.userId) {
-      throw new EngramError("addTeamMember() requires { userId }.");
+      throw new EngramError("addHiveMember() requires { userId }.");
     }
     const body: Record<string, unknown> = { user_id: opts.userId };
     if (opts.role !== undefined) body.role = opts.role;
 
-    return this.http.request<AddTeamMemberResponse>({
+    return this.http.request<AddHiveMemberResponse>({
       method: "POST",
-      path: `/v1/teams/${encodeURIComponent(teamId)}/members`,
+      path: `/v1/hives/${encodeURIComponent(hiveId)}/members`,
       body,
       retryOn5xx: false,
     });
   }
 
   /**
-   * Remove a user from a team. Hits
-   * `DELETE /v1/teams/{team_id}/members/{user_id}` (api.py L3087).
+   * Remove a user from a hive. Hits
+   * `DELETE /v1/hives/{hive_id}/members/{user_id}` (api.py L3087).
    * Cannot remove the owner — server returns 400 (api.py L3123-L3130).
    */
-  async removeTeamMember(
-    teamId: string,
+  async removeHiveMember(
+    hiveId: string,
     userId: string,
-  ): Promise<RemoveTeamMemberResponse> {
-    if (!teamId || !userId) {
+  ): Promise<RemoveHiveMemberResponse> {
+    if (!hiveId || !userId) {
       throw new EngramError(
-        "removeTeamMember() requires (teamId, userId).",
+        "removeHiveMember() requires (hiveId, userId).",
       );
     }
-    return this.http.request<RemoveTeamMemberResponse>({
+    return this.http.request<RemoveHiveMemberResponse>({
       method: "DELETE",
-      path: `/v1/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`,
+      path: `/v1/hives/${encodeURIComponent(hiveId)}/members/${encodeURIComponent(userId)}`,
       retryOn5xx: false,
     });
   }

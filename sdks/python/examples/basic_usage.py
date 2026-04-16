@@ -37,7 +37,7 @@ def main() -> int:
             "Production Postgres runs on port 5433 with pgvector 0.7.0",
             category="infra",
             importance=0.9,
-            metadata={"source": "example", "owner": "platform-team"},
+            metadata={"source": "example", "owner": "platform-hive"},
         )
         print("[store]   id={} status={}".format(stored.id, stored.status))
 
