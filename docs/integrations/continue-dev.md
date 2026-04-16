@@ -173,24 +173,24 @@ alias npmtest=engram_npm_test
 
 ---
 
-## Wiring team sharing (Wave 3)
+## Wiring hive sharing (Wave 3)
 
 ```bash
-engram-bridge team list
-engram-bridge team create "backend-crew" --slug backend-crew
-engram-bridge team add-member <team_uuid> <user_uuid> --role member
+engram-bridge hive list
+engram-bridge hive create "backend-crew" --slug backend-crew
+engram-bridge hive add-member <hive_uuid> <user_uuid> --role member
 engram-bridge push "standardized on zod for API validation" \
-    --team <team_uuid>
-engram-bridge pull --scope team:<team_uuid>
+    --hive <hive_uuid>
+engram-bridge pull --scope hive:<hive_uuid>
 ```
 
 If you use the `code_with_memory` launcher, swap the pull for
-`engram-bridge pull --scope team:<uuid>` to pin the Continue
-session's context to a specific team collection.
+`engram-bridge pull --scope hive:<uuid>` to pin the Continue
+session's context to a specific hive collection.
 
 > **Gap:** the Engram MCP server does not yet expose a `scope`
 > argument, so `memory_search` and `memory_recall` from inside
-> Continue only hit your personal collection. Team reads go
+> Continue only hit your personal collection. Hive reads go
 > through the bridge CLI until a later wave.
 
 ---

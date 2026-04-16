@@ -1,15 +1,15 @@
 /**
- * Team-sharing example — Wave 3 APIs.
+ * Hive-sharing example — Wave 3 APIs.
  *
- * Demonstrates the full team lifecycle:
- *   1. Create a team (caller becomes owner)
+ * Demonstrates the full hive lifecycle:
+ *   1. Create a hive (caller becomes owner)
  *   2. Add a member by their user_id
- *   3. Store a memory into the team's scope via `shareWith`
- *   4. Search the team scope via `scope: "team:<uuid>"`
+ *   3. Store a memory into the hive's scope via `shareWith`
+ *   4. Search the hive scope via `scope: "hive:<uuid>"`
  *   5. Remove the member (optional cleanup)
  *
  * Run with:
- *   ENGRAM_API_KEY=pr_live_... npx tsx examples/team-sharing.ts
+ *   ENGRAM_API_KEY=pr_live_... npx tsx examples/hive-sharing.ts
  */
 
 import { EngramClient, EngramAPIError } from "../src/index.js";
@@ -22,20 +22,20 @@ async function main(): Promise<void> {
 
   const client = new EngramClient({ apiKey });
 
-  // 1. Create the team. Slug must be 3-48 chars, lowercase alphanumerics
+  // 1. Create the hive. Slug must be 3-48 chars, lowercase alphanumerics
   //    and hyphens. The caller's own user becomes owner automatically.
-  const team = await client.createTeam({
-    name: "Platform Team",
+  const hive = await client.createTeam({
+    name: "Platform Hive",
     slug: `platform-${Date.now().toString(36)}`,
   });
-  console.log("Team created:", team.id, team.slug);
+  console.log("Hive created:", hive.id, hive.slug);
 
   // 2. Add a second user. You need their Engram user UUID (not email).
   //    This call requires the caller to be owner or admin.
   const collaboratorId = process.env.COLLAB_USER_ID;
   if (collaboratorId) {
     try {
-      const added = await client.addTeamMember(team.id, {
+      const added = await client.addHiveMember(hive.id, {
         userId: collaboratorId,
         role: "member",
       });
@@ -49,33 +49,33 @@ async function main(): Promise<void> {
     }
   }
 
-  // 3. Store a memory that fans out to the team collection. The
+  // 3. Store a memory that fans out to the hive collection. The
   //    primary write still lands in the caller's personal collection;
-  //    team fanout happens alongside with the same doc_id so it's
+  //    hive fanout happens alongside with the same doc_id so it's
   //    addressable from either scope.
   const shared = await client.store({
     text: "Staging redis password rotates every 90 days — script in infra/rotate.sh.",
     category: "runbook",
     importance: 0.8,
-    shareWith: [`team:${team.id}`],
+    shareWith: [`hive:${hive.id}`],
   });
-  console.log("Stored in personal + team:", shared.id);
+  console.log("Stored in personal + hive:", shared.id);
 
-  // 4. Search the team's collection specifically. Scope routes the
-  //    search engine to the team's physical Qdrant collection and
+  // 4. Search the hive's collection specifically. Scope routes the
+  //    search engine to the hive's physical Qdrant collection and
   //    rechecks membership before returning anything.
   const teamHits = await client.search({
     query: "how do I rotate the redis password",
-    scope: `team:${team.id}`,
+    scope: `hive:${hive.id}`,
     topK: 5,
   });
-  console.log(`Team scope returned ${teamHits.results.length} result(s).`);
+  console.log(`Hive scope returned ${teamHits.results.length} result(s).`);
 
   // 5. Cleanup — remove the collaborator if we added one. Owners
   //    cannot remove themselves; for a full tear-down you'd delete
-  //    the team entirely (not yet exposed in this SDK surface).
+  //    the hive entirely (not yet exposed in this SDK surface).
   if (collaboratorId) {
-    const removed = await client.removeTeamMember(team.id, collaboratorId);
+    const removed = await client.removeHiveMember(hive.id, collaboratorId);
     console.log("Removed:", removed.user_id, "=>", removed.removed);
   }
 }

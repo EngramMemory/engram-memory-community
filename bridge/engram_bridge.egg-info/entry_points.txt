@@ -1,0 +1,5 @@
+[console_scripts]
+engram-bridge = bridge.cli:main
+
+[pytest11]
+engram_bridge = bridge.pytest_plugin

@@ -11,7 +11,7 @@ Engram directly.
 If the other agent docs point you at `engram-bridge pull` or
 `engram-bridge push`, this doc does the same thing without the
 bridge in the middle: you talk to `POST /v1/store`,
-`POST /v1/search`, and `/v1/teams/*` yourself.
+`POST /v1/search`, and `/v1/hives/*` yourself.
 
 ---
 
@@ -19,7 +19,7 @@ bridge in the middle: you talk to `POST /v1/store`,
 
 - Read path → `POST /v1/search`
 - Push path → `POST /v1/store`
-- Team management → `/v1/teams`, `/v1/teams/{team_id}/members`
+- Hive management → `/v1/hives`, `/v1/hives/{hive_id}/members`
 - Health probe (no auth) → `GET /health`
 
 Every authenticated endpoint uses a bearer token on the
@@ -60,7 +60,7 @@ and classified errors (`EngramAuthError`, `EngramRateLimitError`,
 npm install @engram/sdk
 ```
 
-Then the read/push/team examples below become:
+Then the read/push/hive examples below become:
 
 ```ts
 import { EngramClient } from "@engram/sdk";
@@ -73,7 +73,7 @@ const client = new EngramClient({
 const { results } = await client.search({
   query: "retry strategy",
   topK: 5,
-  scope: "personal",                        // or "team:<uuid>"
+  scope: "personal",                        // or "hive:<uuid>"
 });
 
 // Push
@@ -81,14 +81,14 @@ const { id } = await client.store({
   text: "shipped feature X",
   category: "decision",
   importance: 0.6,
-  shareWith: ["team:<uuid>"],               // optional fan-out
+  shareWith: ["hive:<uuid>"],               // optional fan-out
 });
 
-// Team
-const team = await client.createTeam({ name: "my-team", slug: "my-team" });
+// Hive
+const hive = await client.createTeam({ name: "my-hive", slug: "my-hive" });
 const mine = await client.listTeams();
-await client.addTeamMember({
-  teamId: team.id,
+await client.addHiveMember({
+  hiveId: hive.id,
   userId: "<user_uuid>",
   role: "member",
 });
@@ -149,7 +149,7 @@ Response shape (abridged):
 }
 ```
 
-Pass `"scope": "team:<team_id>"` to search a shared team
+Pass `"scope": "hive:<hive_id>"` to search a shared hive
 collection instead of your personal one (see Wave 3 below).
 
 ### Python example
@@ -302,15 +302,15 @@ export async function store(
 
 ---
 
-## Wiring team sharing (Wave 3)
+## Wiring hive sharing (Wave 3)
 
-The `/v1/teams` endpoints are the REST surface the bridge CLI
+The `/v1/hives` endpoints are the REST surface the bridge CLI
 wraps. Same shapes, no bridge required.
 
-### List teams
+### List hives
 
 ```bash
-curl -sS https://api.engrammemory.ai/v1/teams \
+curl -sS https://api.engrammemory.ai/v1/hives \
   -H "Authorization: Bearer $ENGRAM_API_KEY" \
   -H "X-API-Version: 1"
 ```
@@ -319,11 +319,11 @@ Returns:
 
 ```json
 {
-  "teams": [
+  "hives": [
     {
       "id": "<uuid>",
-      "name": "my-team",
-      "slug": "my-team",
+      "name": "my-hive",
+      "slug": "my-hive",
       "owner_user_id": "<uuid>",
       "role": "owner",
       "member_count": 3,
@@ -333,25 +333,25 @@ Returns:
 }
 ```
 
-### Create a team
+### Create a hive
 
 ```bash
-curl -sS https://api.engrammemory.ai/v1/teams \
+curl -sS https://api.engrammemory.ai/v1/hives \
   -H "Authorization: Bearer $ENGRAM_API_KEY" \
   -H "X-API-Version: 1" \
   -H "Content-Type: application/json" \
-  -d '{"name": "my-team", "slug": "my-team"}'
+  -d '{"name": "my-hive", "slug": "my-hive"}'
 ```
 
-Returns the created team row. You become owner + first member in
-the same request — the cloud does the team row insert and the
+Returns the created hive row. You become owner + first member in
+the same request — the cloud does the hive row insert and the
 owner membership insert in one transaction and rolls back both on
 failure.
 
 ### Add a member
 
 ```bash
-curl -sS https://api.engrammemory.ai/v1/teams/<team_uuid>/members \
+curl -sS https://api.engrammemory.ai/v1/hives/<hive_uuid>/members \
   -H "Authorization: Bearer $ENGRAM_API_KEY" \
   -H "X-API-Version: 1" \
   -H "Content-Type: application/json" \
@@ -359,10 +359,10 @@ curl -sS https://api.engrammemory.ai/v1/teams/<team_uuid>/members \
 ```
 
 Caller must be owner or admin. `role` is `member` or `admin` —
-`owner` is reserved for the team creator and can't be assigned
+`owner` is reserved for the hive creator and can't be assigned
 through this endpoint.
 
-### Push to a team
+### Push to a hive
 
 Pass `share_with` on `POST /v1/store`:
 
@@ -375,17 +375,17 @@ curl -sS https://api.engrammemory.ai/v1/store \
     "text": "shipped feature X",
     "category": "decision",
     "importance": 0.6,
-    "share_with": ["team:<team_uuid>"]
+    "share_with": ["hive:<hive_uuid>"]
   }'
 ```
 
-Each `share_with` entry has the form `team:<team_uuid>`. The
-cloud validates that you're a member of every listed team before
-writing — any team you aren't in returns 403 and the whole store
-call fails (the cloud writes personal + team fan-out together to
+Each `share_with` entry has the form `hive:<hive_uuid>`. The
+cloud validates that you're a member of every listed hive before
+writing — any hive you aren't in returns 403 and the whole store
+call fails (the cloud writes personal + hive fan-out together to
 avoid partial state).
 
-### Pull from a team
+### Pull from a hive
 
 Pass `scope` on `POST /v1/search`:
 
@@ -397,12 +397,12 @@ curl -sS https://api.engrammemory.ai/v1/search \
   -d '{
     "query": "retry strategy",
     "top_k": 5,
-    "scope": "team:<team_uuid>"
+    "scope": "hive:<hive_uuid>"
   }'
 ```
 
-`scope` is `"personal"` (default) or `"team:<team_uuid>"`.
-Unauthorized team scopes return 403.
+`scope` is `"personal"` (default) or `"hive:<hive_uuid>"`.
+Unauthorized hive scopes return 403.
 
 ---
 
@@ -411,12 +411,12 @@ Unauthorized team scopes return 403.
 A typical non-MCP agent flow looks like this:
 
 1. **On task start** → `POST /v1/search` with a summary of the
-   incoming task, maybe scoped to a team. Include the returned
+   incoming task, maybe scoped to a hive. Include the returned
    memories as system-prompt context.
 2. **On meaningful event** → `POST /v1/store` with a concise
    description (one sentence), a category, and metadata the read
    side will filter on (`project_id`, `branch`, `source`, etc.).
-3. **On team handoff** → include `share_with` on the store call
+3. **On hive handoff** → include `share_with` on the store call
    so the memory reaches teammates' pull scopes.
 
 ---
@@ -444,8 +444,8 @@ REST-specific checks:
 
 - **401 on every call** → your API key is wrong or expired.
   Rotate it on the Engram dashboard and reload `ENGRAM_API_KEY`.
-- **403 on a team call** → you're not a member of the listed
-  team. Call `GET /v1/teams` to see what you do have access to.
+- **403 on a hive call** → you're not a member of the listed
+  hive. Call `GET /v1/hives` to see what you do have access to.
 - **422 on store** → `text` is missing or empty. The cloud
   requires a non-empty `text` field even when `content` would
   work on older versions.

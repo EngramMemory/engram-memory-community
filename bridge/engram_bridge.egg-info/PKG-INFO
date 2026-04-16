@@ -1,3 +1,28 @@
+Metadata-Version: 2.4
+Name: engram-bridge
+Version: 0.1.0
+Summary: Client daemon that pulls Engram memories into agent sessions.
+Author: Engram Memory
+License: MIT
+Project-URL: Homepage, https://engrammemory.ai
+Project-URL: Source, https://github.com/engram-memory/engram-memory-community
+Keywords: engram,memory,llm,agent,context,claude
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: httpx<1.0,>=0.25
+Requires-Dist: pyyaml<7.0,>=6.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7; extra == "dev"
+
 # Engram Bridge
 
 A tiny client-side daemon that pulls relevant memories from the

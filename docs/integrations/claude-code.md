@@ -201,40 +201,40 @@ the runner's exit code.
 
 ---
 
-## Wiring team sharing (Wave 3)
+## Wiring hive sharing (Wave 3)
 
-Shared team collections let you and your co-agents pull from the
-same pool of memories. Team commands go through the bridge CLI:
+Shared hive collections let you and your co-agents pull from the
+same pool of memories. Hive commands go through the bridge CLI:
 
 ```bash
-# List teams your api_key already belongs to
-engram-bridge team list
+# List hives your api_key already belongs to
+engram-bridge hive list
 
-# Create a new team — you become owner + first member in one step
-engram-bridge team create "my-team" --slug my-team
+# Create a new hive — you become owner + first member in one step
+engram-bridge hive create "my-hive" --slug my-hive
 
 # Invite another user (owner/admin only)
-engram-bridge team add-member <team_uuid> <user_uuid> --role member
+engram-bridge hive add-member <hive_uuid> <user_uuid> --role member
 
-# Push a memory to your personal store AND fan it out to a team
-engram-bridge push "shipped feature X" --team <team_uuid>
+# Push a memory to your personal store AND fan it out to a hive
+engram-bridge push "shipped feature X" --hive <hive_uuid>
 
-# Pull context from a team collection instead of personal
-engram-bridge pull --scope team:<team_uuid>
+# Pull context from a hive collection instead of personal
+engram-bridge pull --scope hive:<hive_uuid>
 ```
 
-`--team` and `--scope team:<id>` pass through to
+`--hive` and `--scope hive:<id>` pass through to
 `POST /v1/store` (`share_with`) and `POST /v1/search` (`scope`)
 respectively. The cloud validates that the caller is a member of
-each listed team and returns 403 for any team they aren't in — the
+each listed hive and returns 403 for any hive they aren't in — the
 bridge swallows the error silently, so a revoked membership never
 breaks a commit or a session start.
 
 > **Gap:** the `SessionStart` hook always runs `engram bridge pull`
 > with no `--scope` override, so it pulls from your personal store.
-> If you want a session to pull team context instead, edit
+> If you want a session to pull hive context instead, edit
 > `~/.claude/settings.json` and change the hook command to
-> `engram bridge pull --scope team:<team_uuid>`. A per-project
+> `engram bridge pull --scope hive:<hive_uuid>`. A per-project
 > `scope` config key is planned for a later wave.
 
 ---
@@ -266,7 +266,7 @@ you want a single source of truth across session-start context and
 in-session tool calls, pick the bridge OR the MCP server, not both,
 until Wave 5 unifies them.
 
-> **Gap:** the MCP server does not yet expose team scopes. For team
+> **Gap:** the MCP server does not yet expose hive scopes. For hive
 > sharing, stick with the bridge CLI as shown above.
 
 ---

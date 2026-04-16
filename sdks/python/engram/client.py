@@ -42,7 +42,7 @@ from .models import (
     SearchResponse,
     StoreRequest,
     StoreResponse,
-    TeamResponse,
+    HiveResponse,
 )
 
 DEFAULT_BASE_URL = "https://api.engrammemory.ai"
@@ -79,7 +79,7 @@ def _build_config(
     """Normalize constructor arguments into an immutable config.
 
     Split out so both sync and async clients share the exact same
-    validation — the cloud team flagged a case last quarter where the
+    validation — the cloud hive flagged a case last quarter where the
     bridge and the cloud had different ideas about what a valid
     ``base_url`` looked like, which produced great log lines and no
     useful error at the caller. Single chokepoint fixes that.
@@ -141,31 +141,31 @@ def _coerce_feedback_response(raw: Any) -> FeedbackResponse:
     return FeedbackResponse.from_dict(raw)
 
 
-def _coerce_team_response(raw: Any) -> TeamResponse:
+def _coerce_hive_response(raw: Any) -> HiveResponse:
     if not isinstance(raw, dict):
         raise EngramValidationError(
-            "Expected a JSON object from /v1/teams, got {}".format(type(raw).__name__)
+            "Expected a JSON object from /v1/hives, got {}".format(type(raw).__name__)
         )
-    return TeamResponse.from_dict(raw)
+    return HiveResponse.from_dict(raw)
 
 
-def _coerce_team_list(raw: Any) -> List[TeamResponse]:
-    """The cloud returns ``{"teams": [...]}`` for GET /v1/teams.
+def _coerce_hive_list(raw: Any) -> List[HiveResponse]:
+    """The cloud returns ``{"hives": [...]}`` for GET /v1/hives.
 
     Unwrap the envelope here so callers get a flat list and don't
     have to reach into a dict. If the server ever returns a raw list
     (future API version), fall through and handle that too.
     """
     if isinstance(raw, dict):
-        items = raw.get("teams", [])
+        items = raw.get("hives", [])
     elif isinstance(raw, list):
         items = raw
     else:
         raise EngramValidationError(
-            "Expected a JSON object or list from /v1/teams, "
+            "Expected a JSON object or list from /v1/hives, "
             "got {}".format(type(raw).__name__)
         )
-    return [TeamResponse.from_dict(item) for item in items if isinstance(item, dict)]
+    return [HiveResponse.from_dict(item) for item in items if isinstance(item, dict)]
 
 
 def _coerce_health_response(raw: Any) -> HealthResponse:
@@ -257,11 +257,11 @@ class EngramClient:
     ) -> StoreResponse:
         """Persist a memory via ``POST /v1/store``.
 
-        ``share_with`` is a list of team scope strings — each entry
-        must be ``"team:<team_id>"``. The cloud verifies membership
+        ``share_with`` is a list of hive scope strings — each entry
+        must be ``"hive:<hive_id>"``. The cloud verifies membership
         before writing and returns 403 (raised as
-        :class:`EngramAPIError`) for any team the caller isn't in.
-        There is no partial-write: if one team in the list fails,
+        :class:`EngramAPIError`) for any hive the caller isn't in.
+        There is no partial-write: if one hive in the list fails,
         nothing is stored.
         """
         req = StoreRequest(
@@ -286,7 +286,7 @@ class EngramClient:
         ``top_k`` is the SDK-facing name for the result count — the
         wire protocol calls it ``limit`` and we translate at the
         transport boundary. ``scope`` selects ``"personal"`` (default)
-        or ``"team:<team_id>"``; an unauthorized team scope raises
+        or ``"hive:<hive_id>"``; an unauthorized hive scope raises
         :class:`EngramAPIError` with status 403.
         """
         req = SearchRequest(
@@ -338,39 +338,39 @@ class EngramClient:
         return _coerce_feedback_response(raw)
 
     # ------------------------------------------------------------------
-    # Teams
+    # Hives
     # ------------------------------------------------------------------
 
-    def create_team(self, name: str, slug: str) -> TeamResponse:
-        """Create a new team via ``POST /v1/teams``.
+    def create_hive(self, name: str, slug: str) -> HiveResponse:
+        """Create a new hive via ``POST /v1/hives``.
 
         The caller is automatically added as ``owner``, and the
         backing Qdrant collection is pre-created server-side so the
-        first store/search on the new team doesn't pay a cold-start
+        first store/search on the new hive doesn't pay a cold-start
         roundtrip. Slug must be lowercase alphanumeric + hyphens,
         3-48 characters.
         """
         raw = self._transport.request(
             "POST",
-            "/v1/teams",
+            "/v1/hives",
             json_body={"name": name, "slug": slug},
         )
-        return _coerce_team_response(raw)
+        return _coerce_hive_response(raw)
 
-    def list_teams(self) -> List[TeamResponse]:
-        """List every team the authenticated user belongs to via
-        ``GET /v1/teams``. Each row includes the caller's role on
-        that team."""
-        raw = self._transport.request("GET", "/v1/teams")
-        return _coerce_team_list(raw)
+    def list_hives(self) -> List[HiveResponse]:
+        """List every hive the authenticated user belongs to via
+        ``GET /v1/hives``. Each row includes the caller's role on
+        that hive."""
+        raw = self._transport.request("GET", "/v1/hives")
+        return _coerce_hive_list(raw)
 
-    def add_team_member(
+    def add_hive_member(
         self,
-        team_id: str,
+        hive_id: str,
         user_id: str,
         role: str = "member",
     ) -> None:
-        """Add a user to a team via ``POST /v1/teams/{team_id}/members``.
+        """Add a user to a hive via ``POST /v1/hives/{hive_id}/members``.
 
         Caller must be ``owner`` or ``admin``. ``role`` must be
         ``"admin"`` or ``"member"`` — owner transfer is a separate
@@ -378,14 +378,14 @@ class EngramClient:
         """
         self._transport.request(
             "POST",
-            "/v1/teams/{}/members".format(team_id),
+            "/v1/hives/{}/members".format(hive_id),
             json_body={"user_id": user_id, "role": role},
         )
         return None
 
-    def remove_team_member(self, team_id: str, user_id: str) -> None:
-        """Remove a user from a team via
-        ``DELETE /v1/teams/{team_id}/members/{user_id}``.
+    def remove_hive_member(self, hive_id: str, user_id: str) -> None:
+        """Remove a user from a hive via
+        ``DELETE /v1/hives/{hive_id}/members/{user_id}``.
 
         Caller must be ``owner`` or ``admin``. The owner can't remove
         themselves — the cloud returns 400 in that case and the SDK
@@ -393,7 +393,7 @@ class EngramClient:
         """
         self._transport.request(
             "DELETE",
-            "/v1/teams/{}/members/{}".format(team_id, user_id),
+            "/v1/hives/{}/members/{}".format(hive_id, user_id),
         )
         return None
 
@@ -517,38 +517,38 @@ class AsyncEngramClient:
         return _coerce_feedback_response(raw)
 
     # ------------------------------------------------------------------
-    # Teams
+    # Hives
     # ------------------------------------------------------------------
 
-    async def create_team(self, name: str, slug: str) -> TeamResponse:
+    async def create_hive(self, name: str, slug: str) -> HiveResponse:
         raw = await self._transport.request(
             "POST",
-            "/v1/teams",
+            "/v1/hives",
             json_body={"name": name, "slug": slug},
         )
-        return _coerce_team_response(raw)
+        return _coerce_hive_response(raw)
 
-    async def list_teams(self) -> List[TeamResponse]:
-        raw = await self._transport.request("GET", "/v1/teams")
-        return _coerce_team_list(raw)
+    async def list_hives(self) -> List[HiveResponse]:
+        raw = await self._transport.request("GET", "/v1/hives")
+        return _coerce_hive_list(raw)
 
-    async def add_team_member(
+    async def add_hive_member(
         self,
-        team_id: str,
+        hive_id: str,
         user_id: str,
         role: str = "member",
     ) -> None:
         await self._transport.request(
             "POST",
-            "/v1/teams/{}/members".format(team_id),
+            "/v1/hives/{}/members".format(hive_id),
             json_body={"user_id": user_id, "role": role},
         )
         return None
 
-    async def remove_team_member(self, team_id: str, user_id: str) -> None:
+    async def remove_hive_member(self, hive_id: str, user_id: str) -> None:
         await self._transport.request(
             "DELETE",
-            "/v1/teams/{}/members/{}".format(team_id, user_id),
+            "/v1/hives/{}/members/{}".format(hive_id, user_id),
         )
         return None
 

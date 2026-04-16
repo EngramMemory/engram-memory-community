@@ -86,7 +86,7 @@ def _format_results(
 def _normalize_scope(raw: Optional[str]) -> str:
     """Normalize a caller-supplied scope string.
 
-    Accepts ``None`` / ``"personal"`` (default) or ``"team:<id>"``. An
+    Accepts ``None`` / ``"personal"`` (default) or ``"hive:<id>"``. An
     invalid string collapses to ``"personal"`` rather than raising —
     the bridge never breaks a workflow, so bad input falls back to
     the safe default.
@@ -96,7 +96,7 @@ def _normalize_scope(raw: Optional[str]) -> str:
     value = raw.strip()
     if not value or value == "personal":
         return "personal"
-    if value.startswith("team:") and len(value) > len("team:"):
+    if value.startswith("hive:") and len(value) > len("hive:"):
         return value
     return "personal"
 

@@ -192,33 +192,33 @@ runner names (`pytest`, `jest`, `cargo`, `go`) are accepted by
 
 ---
 
-## Wiring team sharing (Wave 3)
+## Wiring hive sharing (Wave 3)
 
 ```bash
-# List teams
-engram-bridge team list
+# List hives
+engram-bridge hive list
 
-# Create a team
-engram-bridge team create "cursor-squad" --slug cursor-squad
+# Create a hive
+engram-bridge hive create "cursor-squad" --slug cursor-squad
 
 # Add a member (owner/admin only)
-engram-bridge team add-member <team_uuid> <user_uuid> --role member
+engram-bridge hive add-member <hive_uuid> <user_uuid> --role member
 
-# Push a memory to personal + team
+# Push a memory to personal + hive
 engram-bridge push "decided on Tailwind over CSS modules" \
-    --team <team_uuid>
+    --hive <hive_uuid>
 
-# Pull context from a team instead of personal
-engram-bridge pull --scope team:<team_uuid>
+# Pull context from a hive instead of personal
+engram-bridge pull --scope hive:<hive_uuid>
 ```
 
 If you use the `cursor_with_memory` alias above, swap
-`engram-bridge pull` for `engram-bridge pull --scope team:<uuid>`
-to pin Cursor launches to a specific team.
+`engram-bridge pull` for `engram-bridge pull --scope hive:<uuid>`
+to pin Cursor launches to a specific hive.
 
-> **Gap:** the Engram MCP server does not yet expose team scopes,
+> **Gap:** the Engram MCP server does not yet expose hive scopes,
 > so `memory_search` and `memory_store` from inside Cursor only hit
-> your personal collection. Team reads/writes have to go through
+> your personal collection. Hive reads/writes have to go through
 > the bridge CLI until a later wave.
 
 ---

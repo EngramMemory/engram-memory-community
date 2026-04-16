@@ -16,7 +16,7 @@ and configuration steps live in **[../../bridge/README.md](../../bridge/README.m
 
 ## Supported agents
 
-| Agent | Read (pull context) | Push (events) | Team scope | Native MCP |
+| Agent | Read (pull context) | Push (events) | Hive scope | Native MCP |
 |---|---|---|---|---|
 | [Claude Code](claude-code.md) | yes — `SessionStart` hook | yes — bridge CLI + git hook + pytest plugin | yes | yes |
 | [Cursor](cursor.md) | yes — MCP `memory_search` tool | yes — bridge CLI + git hook + pytest plugin | yes (CLI) | yes |
@@ -41,10 +41,10 @@ and configuration steps live in **[../../bridge/README.md](../../bridge/README.m
   here gets a `yes` because the push path lives in the `engram-bridge`
   CLI itself (plus the git post-commit hook and pytest plugin), and
   those run the same way regardless of which agent you're in.
-- **Team scope** — can you `push` into and `pull` from shared team
-  collections (Wave 3)? All CLI paths support `--team <id>` on push
-  and `--scope team:<id>` on pull. The MCP tools don't yet expose
-  team scopes — see the **MCP gap** note below.
+- **Hive scope** — can you `push` into and `pull` from shared hive
+  collections (Wave 3)? All CLI paths support `--hive <id>` on push
+  and `--scope hive:<id>` on pull. The MCP tools don't yet expose
+  hive scopes — see the **MCP gap** note below.
 - **Native MCP** — does the agent support the Model Context Protocol
   out of the box? If yes, you can point it at the Engram MCP server at
   `mcp/server.py` and get the seven memory tools (`memory_store`,
@@ -53,7 +53,7 @@ and configuration steps live in **[../../bridge/README.md](../../bridge/README.m
 
 ---
 
-## MCP gap (Wave 3 teams)
+## MCP gap (Wave 3 hives)
 
 The Engram MCP server at
 [`mcp/server.py`](../../mcp/server.py) exposes seven tools today:
@@ -66,16 +66,16 @@ The Engram MCP server at
 6. `memory_feedback`
 7. `memory_connect`
 
-None of them accept a `scope` or `team_id` argument yet — the MCP
+None of them accept a `scope` or `hive_id` argument yet — the MCP
 server currently only reads/writes the per-user collection. If you
-need to push to or pull from a shared team, use the bridge CLI:
+need to push to or pull from a shared hive, use the bridge CLI:
 
 ```bash
-engram-bridge push "shipped feature X" --team <team_uuid>
-engram-bridge pull --scope team:<team_uuid>
+engram-bridge push "shipped feature X" --hive <hive_uuid>
+engram-bridge pull --scope hive:<hive_uuid>
 ```
 
-Extending the MCP server to advertise team scopes is a follow-up
+Extending the MCP server to advertise hive scopes is a follow-up
 wave. Until then, MCP clients see personal memory only.
 
 ---
@@ -85,14 +85,14 @@ wave. Until then, MCP clients see personal memory only.
 ```
 pull context on session start     →  READ PATH  →  POST /v1/search
 push milestone / commit / green   →  PUSH PATH  →  POST /v1/store
-list / create / invite a team     →  TEAM PATH  →  /v1/teams/*
+list / create / invite a hive     →  HIVE PATH  →  /v1/hives/*
 ```
 
 | Path | Entry points | Cloud endpoint |
 |---|---|---|
 | read | `engram-bridge pull`, MCP `memory_search` / `memory_recall` | `POST /v1/search` |
 | push | `engram-bridge push`, `push-commit`, `push-test`, MCP `memory_store` | `POST /v1/store` |
-| team | `engram-bridge team list/create/add-member`, `push --team`, `pull --scope team:<id>` | `GET/POST /v1/teams`, `POST /v1/teams/{id}/members` |
+| hive | `engram-bridge hive list/create/add-member`, `push --hive`, `pull --scope hive:<id>` | `GET/POST /v1/hives`, `POST /v1/hives/{id}/members` |
 
 ---
 

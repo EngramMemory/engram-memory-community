@@ -25,7 +25,7 @@
  *
  * `shareWith` is the camelCase-facing name; we translate it to
  * `share_with` at the wire layer in client.ts. Wave 3 added this —
- * entries take the form `"team:<uuid>"` and any team the caller isn't
+ * entries take the form `"hive:<uuid>"` and any hive the caller isn't
  * a member of returns 403 (api.py L2457-L2467).
  */
 export interface StoreRequestBody {
@@ -53,7 +53,7 @@ export interface StoreResponse {
  *
  * `scope` (Wave 3, L637-L644) accepts:
  *   "personal" (default) — caller's own collection
- *   "team:<uuid>"        — team collection, requires membership
+ *   "hive:<uuid>"        — hive collection, requires membership
  *
  * `queries` is an optional list of up to 3 additional query variants
  * for RRF-merged multi-query search (L623-L631, L2596 cap at 4 total).
@@ -129,10 +129,10 @@ export interface FeedbackResponse {
   edges_added: number;
 }
 
-// ─── Teams (Wave 3) ──────────────────────────────────────────────────
+// ─── Hives (Wave 3) ──────────────────────────────────────────────────
 
-/** `class CreateTeamRequest` — api.py L647-L649. */
-export interface CreateTeamRequestBody {
+/** `class CreateHiveRequest` — api.py L647-L649. */
+export interface CreateHiveRequestBody {
   name: string;
   slug: string;
 }
@@ -144,13 +144,13 @@ export interface AddMemberRequestBody {
 }
 
 /**
- * `class TeamResponse` — api.py L657-L663.
+ * `class HiveResponse` — api.py L657-L663.
  *
  * `created_at` is serialized as an ISO-8601 datetime string on the
  * wire (FastAPI's default for `datetime`), so we type it as `string`
  * rather than `Date` and leave parsing to the caller.
  */
-export interface TeamResponse {
+export interface HiveResponse {
   id: string;
   name: string;
   slug: string;
@@ -158,39 +158,39 @@ export interface TeamResponse {
   created_at: string;
   member_count: number;
   /**
-   * Only present on list responses — comes from the team_memberships
-   * join in api.py L2982-L3007 (`list_teams`). Not on create or member
+   * Only present on list responses — comes from the hive_memberships
+   * join in api.py L2982-L3007 (`list_hives`). Not on create or member
    * mutation responses.
    */
   role?: string;
 }
 
 /**
- * Envelope around GET /v1/teams. The endpoint returns
- * `{"teams": [...]}` (api.py L3011), not a bare array, so we expose
+ * Envelope around GET /v1/hives. The endpoint returns
+ * `{"hives": [...]}` (api.py L3011), not a bare array, so we expose
  * the wrapper here and unwrap in the client.
  */
 export interface ListTeamsResponse {
-  teams: TeamResponse[];
+  hives: HiveResponse[];
 }
 
 /**
- * Return envelope from POST /v1/teams/{id}/members — api.py L3079-L3083.
+ * Return envelope from POST /v1/hives/{id}/members — api.py L3079-L3083.
  * `joined_at` is ISO-8601 or null.
  */
-export interface AddTeamMemberResponse {
-  team_id: string;
+export interface AddHiveMemberResponse {
+  hive_id: string;
   user_id: string;
   role: string;
   joined_at: string | null;
 }
 
 /**
- * Return envelope from DELETE /v1/teams/{id}/members/{user_id}
+ * Return envelope from DELETE /v1/hives/{id}/members/{user_id}
  * — api.py L3152.
  */
-export interface RemoveTeamMemberResponse {
-  team_id: string;
+export interface RemoveHiveMemberResponse {
+  hive_id: string;
   user_id: string;
   removed: boolean;
 }
@@ -245,7 +245,7 @@ export interface CreateTeamOptions {
   slug: string;
 }
 
-export interface AddTeamMemberOptions {
+export interface AddHiveMemberOptions {
   userId: string;
   role?: string;
 }

@@ -156,29 +156,29 @@ alias gotest=engram_go_test
 
 ---
 
-## Wiring team sharing (Wave 3)
+## Wiring hive sharing (Wave 3)
 
 ```bash
-engram-bridge team list
-engram-bridge team create "aider-duo" --slug aider-duo
-engram-bridge team add-member <team_uuid> <user_uuid> --role member
-engram-bridge push "moved retry logic out of main()" --team <team_uuid>
-engram-bridge pull --scope team:<team_uuid>
+engram-bridge hive list
+engram-bridge hive create "aider-duo" --slug aider-duo
+engram-bridge hive add-member <hive_uuid> <user_uuid> --role member
+engram-bridge push "moved retry logic out of main()" --hive <hive_uuid>
+engram-bridge pull --scope hive:<hive_uuid>
 ```
 
-To pin an aider session to a team's context, change the
+To pin an aider session to a hive's context, change the
 `aider_with_memory` wrapper's pull command:
 
 ```sh
 aider_with_memory() {
   local preface
-  preface=$(engram-bridge pull --scope team:<team_uuid> 2>/dev/null || true)
+  preface=$(engram-bridge pull --scope hive:<hive_uuid> 2>/dev/null || true)
   # ...
 }
 ```
 
 The post-commit hook pushes to your personal store by default. If
-you want commits to fan out to a team, wrap the push command
+you want commits to fan out to a hive, wrap the push command
 instead:
 
 ```sh
@@ -187,13 +187,13 @@ instead:
 # engram-bridge: push-commit
 engram-bridge push-commit >/dev/null 2>&1 || true
 engram-bridge push "$(git log -1 --pretty=%B)" \
-    --team <team_uuid> >/dev/null 2>&1 || true
+    --hive <hive_uuid> >/dev/null 2>&1 || true
 ```
 
-> **Gap:** `engram-bridge push-commit` doesn't accept a `--team`
-> flag yet. For team fan-out on every commit, you have to call
+> **Gap:** `engram-bridge push-commit` doesn't accept a `--hive`
+> flag yet. For hive fan-out on every commit, you have to call
 > `engram-bridge push` with the commit message after the built-in
-> commit push (as shown above). A native `--team` on
+> commit push (as shown above). A native `--hive` on
 > `push-commit` is a small follow-up in a later wave.
 
 > **Gap:** Aider doesn't speak MCP, so the `memory_search` /

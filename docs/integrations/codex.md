@@ -147,20 +147,20 @@ alias npmtest=engram_npm_test
 
 ---
 
-## Wiring team sharing (Wave 3)
+## Wiring hive sharing (Wave 3)
 
 ```bash
-engram-bridge team list
-engram-bridge team create "codex-pod" --slug codex-pod
-engram-bridge team add-member <team_uuid> <user_uuid> --role member
+engram-bridge hive list
+engram-bridge hive create "codex-pod" --slug codex-pod
+engram-bridge hive add-member <hive_uuid> <user_uuid> --role member
 engram-bridge push "settled on httpx over aiohttp for this project" \
-    --team <team_uuid>
-engram-bridge pull --scope team:<team_uuid>
+    --hive <hive_uuid>
+engram-bridge pull --scope hive:<hive_uuid>
 ```
 
-To pin a codex session to a team, change the
+To pin a codex session to a hive, change the
 `codex_with_memory` wrapper's pull to
-`engram-bridge pull --scope team:<team_uuid>`. Revoked team
+`engram-bridge pull --scope hive:<hive_uuid>`. Revoked hive
 memberships never throw — the bridge swallows 403s and the
 wrapper drops back to the plain `codex` branch.
 
@@ -170,9 +170,9 @@ wrapper drops back to the plain `codex` branch.
 > `engram-bridge pull --top-k 5 --project <proj>` from another
 > terminal and paste the output.
 
-> **Gap:** `engram-bridge push-commit` doesn't accept `--team`
-> yet. For team fan-out on every commit, layer a manual
-> `engram-bridge push "..." --team <uuid>` call after the built-in
+> **Gap:** `engram-bridge push-commit` doesn't accept `--hive`
+> yet. For hive fan-out on every commit, layer a manual
+> `engram-bridge push "..." --hive <uuid>` call after the built-in
 > `push-commit` in your `post-commit` hook until a later wave
 > adds the flag.
 

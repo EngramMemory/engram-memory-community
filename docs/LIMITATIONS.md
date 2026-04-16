@@ -46,7 +46,7 @@ All defaults can be overridden via environment variables:
 
 ## What Engram Cloud Adds
 
-For teams, multi-agent workflows, or large memory corpora, [Engram Cloud](https://engrammemory.ai) adds:
+For hives, multi-agent workflows, or large memory corpora, [Engram Cloud](https://engrammemory.ai) adds:
 
 - **TurboQuant compression** — 6x storage compression with zero recall loss
 - **Multi-agent isolation** — Separate collections per agent or project

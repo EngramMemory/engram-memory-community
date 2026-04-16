@@ -18,8 +18,8 @@ export {
 } from "./errors.js";
 
 export type {
-  AddTeamMemberOptions,
-  AddTeamMemberResponse,
+  AddHiveMemberOptions,
+  AddHiveMemberResponse,
   CreateTeamOptions,
   FeedbackOptions,
   FeedbackRequestBody,
@@ -28,7 +28,7 @@ export type {
   ForgetResponse,
   HealthResponse,
   ListTeamsResponse,
-  RemoveTeamMemberResponse,
+  RemoveHiveMemberResponse,
   SearchOptions,
   SearchRequestBody,
   SearchResponse,
@@ -36,5 +36,5 @@ export type {
   StoreOptions,
   StoreRequestBody,
   StoreResponse,
-  TeamResponse,
+  HiveResponse,
 } from "./models.js";

@@ -43,8 +43,8 @@ await client.forget(id);
 ## Features
 
 - **Memory ops** — `store`, `search`, `forget`, `feedback`
-- **Team scopes (Wave 3)** — `createTeam`, `listTeams`, `addTeamMember`,
-  `removeTeamMember`, plus `shareWith` on store and `scope` on search
+- **Hive scopes (Wave 3)** — `createTeam`, `listTeams`, `addHiveMember`,
+  `removeHiveMember`, plus `shareWith` on store and `scope` on search
 - **Error classification** — `EngramAuthError`, `EngramRateLimitError`,
   `EngramAPIError`, `EngramConnectionError`
 - **Retries with backoff** — network errors and transient 5xx retry
@@ -82,19 +82,19 @@ try {
 }
 ```
 
-## Team-scoped memory
+## Hive-scoped memory
 
 ```ts
-const team = await client.createTeam({ name: "Platform", slug: "platform" });
+const hive = await client.createTeam({ name: "Platform", slug: "platform" });
 
 await client.store({
   text: "Staging redis rotates every 90 days.",
-  shareWith: [`team:${team.id}`],
+  shareWith: [`hive:${hive.id}`],
 });
 
 const { results } = await client.search({
   query: "redis rotation schedule",
-  scope: `team:${team.id}`,
+  scope: `hive:${hive.id}`,
 });
 ```
 
@@ -117,7 +117,7 @@ await client.feedback({
 
 See [`examples/`](./examples) for runnable scripts:
 - `basic-usage.ts` — store, search, forget
-- `team-sharing.ts` — the full Wave 3 team flow
+- `hive-sharing.ts` — the full Wave 3 hive flow
 - `feedback-loop.ts` — feedback-driven ranking
 
 ## License

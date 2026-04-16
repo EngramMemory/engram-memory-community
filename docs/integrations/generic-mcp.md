@@ -170,23 +170,23 @@ all four are valid `--runner` values.
 
 ---
 
-## Wiring team sharing (Wave 3)
+## Wiring hive sharing (Wave 3)
 
 ```bash
-engram-bridge team list
-engram-bridge team create "my-team" --slug my-team
-engram-bridge team add-member <team_uuid> <user_uuid> --role member
-engram-bridge push "shipped feature X" --team <team_uuid>
-engram-bridge pull --scope team:<team_uuid>
+engram-bridge hive list
+engram-bridge hive create "my-hive" --slug my-hive
+engram-bridge hive add-member <hive_uuid> <user_uuid> --role member
+engram-bridge push "shipped feature X" --hive <hive_uuid>
+engram-bridge pull --scope hive:<hive_uuid>
 ```
 
 > **Gap:** the MCP server advertises `memory_store`,
 > `memory_search`, and `memory_recall` without a `scope` or
-> `team_id` argument. Team reads and writes have to go through
-> the bridge CLI (`engram-bridge push --team ...`, `pull --scope
-> team:...`) until a later wave adds scope to the MCP tool
-> schemas. The server does not error on team calls — it simply
-> has no team code path, so every tool call today hits the
+> `hive_id` argument. Hive reads and writes have to go through
+> the bridge CLI (`engram-bridge push --hive ...`, `pull --scope
+> hive:...`) until a later wave adds scope to the MCP tool
+> schemas. The server does not error on hive calls — it simply
+> has no hive code path, so every tool call today hits the
 > per-user personal collection.
 
 ---
