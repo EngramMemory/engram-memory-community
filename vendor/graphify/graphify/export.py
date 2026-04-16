@@ -287,7 +287,7 @@ const network = new vis.Network(container, {{ nodes: nodesDS, edges: edgesDS }},
   interaction: {{
     hover: true,
     tooltipDelay: 120,
-    hideEdgesOnDrag: false,
+    hideEdgesOnDrag: true,
     navigationButtons: false,
     keyboard: false,
   }},
@@ -313,13 +313,9 @@ const network = new vis.Network(container, {{ nodes: nodesDS, edges: edgesDS }},
   }},
 }});
 
-// Physics toggle — default ON. User can freeze/unfreeze from the sidebar.
-const physicsToggle = document.getElementById('physics-toggle');
-if (physicsToggle) {{
-  physicsToggle.addEventListener('change', (ev) => {{
-    network.setOptions({{ physics: {{ enabled: ev.target.checked }} }});
-  }});
-}}
+network.once('stabilizationIterationsDone', () => {{
+  network.setOptions({{ physics: {{ enabled: false }} }});
+}});
 
 function showInfo(nodeId) {{
   const n = nodesDS.get(nodeId);
@@ -632,12 +628,6 @@ def to_html(
   <div id="legend-wrap">
     <h3>Communities</h3>
     <div id="legend"></div>
-  </div>
-  <div id="controls" style="padding:12px 16px;border-top:1px solid var(--em-border);font-family:var(--em-font-mono);font-size:10px;color:var(--em-muted-soft);letter-spacing:0.02em;">
-    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:uppercase;">
-      <input id="physics-toggle" type="checkbox" checked style="accent-color:#22c55e;cursor:pointer;">
-      Physics (live drag)
-    </label>
   </div>
   <div id="stats">{stats}</div>
 </div>
