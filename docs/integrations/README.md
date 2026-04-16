@@ -1,10 +1,9 @@
 # Engram Bridge — Agent & IDE Integrations
 
-The Engram Bridge is a small client-side daemon (installed with
+The Engram Bridge is a read-only client (installed with
 `pip install -e ./bridge`) that pulls relevant memories from the
-Engram cloud on session start and pushes meaningful local events
-(milestones, commits, green test runs) back to the cloud as new
-memories. It's designed to be **off unless configured**: if
+Engram cloud when the local recall engine doesn't have what you
+need. It's designed to be **off unless configured**: if
 `~/.engram/config.yaml` is missing or has no valid `api_key`, every
 command exits `0` silently and never breaks your workflow.
 
@@ -16,17 +15,18 @@ and configuration steps live in **[../../bridge/README.md](../../bridge/README.m
 
 ## Supported agents
 
-| Agent | Read (pull context) | Push (events) | Hive scope | Native MCP |
-|---|---|---|---|---|
-| [Claude Code](claude-code.md) | yes — `SessionStart` hook | yes — bridge CLI + git hook + pytest plugin | yes | yes |
-| [Cursor](cursor.md) | yes — MCP `memory_search` tool | yes — bridge CLI + git hook + pytest plugin | yes (CLI) | yes |
-| [Windsurf / Codeium](windsurf.md) | yes — MCP `memory_search` tool | yes — bridge CLI + git hook + pytest plugin | yes (CLI) | yes |
-| [Continue](continue-dev.md) | yes — MCP `memory_search` tool | yes — bridge CLI + git hook + pytest plugin | yes (CLI) | yes |
-| [Aider](aider.md) | partial — shell alias on session start | yes — bridge CLI + git hook + pytest plugin | yes (CLI) | no |
-| [OpenAI Codex CLI](codex.md) | partial — shell alias on session start | yes — bridge CLI + git hook + pytest plugin | yes (CLI) | no |
-| [Sourcegraph Cody](cody.md) | manual — paste `engram-bridge pull` output | yes — bridge CLI + git hook + pytest plugin | yes (CLI) | no |
-| [Generic MCP client](generic-mcp.md) | on-demand tool call (not session-start) — see note | yes — bridge CLI + git hook + pytest plugin | yes (CLI) | yes |
-| [Generic REST / SDK client](generic-rest.md) | yes — any agent that can shell out or call REST | yes — REST `POST /v1/store` | yes (REST) | no |
+| Agent | Read (pull context) | Hive scope | Native MCP |
+|---|---|---|---|
+| [Claude Code](claude-code.md) | yes — `SessionStart` hook | yes | yes |
+| [Claude Desktop](claude-desktop.md) | yes — MCP `memory_search` tool | yes (cloud fallback) | yes |
+| [Cursor](cursor.md) | yes — MCP `memory_search` tool | yes (CLI) | yes |
+| [Windsurf / Codeium](windsurf.md) | yes — MCP `memory_search` tool | yes (CLI) | yes |
+| [Continue](continue-dev.md) | yes — MCP `memory_search` tool | yes (CLI) | yes |
+| [Aider](aider.md) | partial — shell alias on session start | yes (CLI) | no |
+| [OpenAI Codex CLI](codex.md) | partial — shell alias on session start | yes (CLI) | no |
+| [Sourcegraph Cody](cody.md) | manual — paste `engram-bridge pull` output | yes (CLI) | no |
+| [Generic MCP client](generic-mcp.md) | on-demand tool call (not session-start) | yes (CLI) | yes |
+| [Generic REST / SDK client](generic-rest.md) | yes — any agent that can shell out or call REST | yes (REST) | no |
 
 ### Column meaning
 

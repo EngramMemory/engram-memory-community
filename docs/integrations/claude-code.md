@@ -1,15 +1,13 @@
 # Claude Code
 
 **Engram Bridge works with Claude Code via a native `SessionStart`
-hook** (for the read path) and via the same `engram-bridge` CLI +
-git hook + pytest plugin that every other agent uses (for the push
-path). Claude Code also speaks MCP natively, so you can optionally
-point it at the Engram MCP server for on-demand `memory_search` and
-`memory_store` calls in the middle of a session.
+hook** that injects relevant memories at the start of every session.
+Claude Code also speaks MCP natively, so you can point it at the
+Engram MCP server for on-demand `memory_search` and `memory_store`
+calls mid-session.
 
-This page covers both CLI (`claude`) and the desktop app — they
-share `~/.claude/settings.json`, so configuring one configures the
-other.
+This page covers the CLI (`claude`). For the desktop app, see
+**[claude-desktop.md](claude-desktop.md)**.
 
 ---
 
@@ -118,124 +116,38 @@ edit.
 
 ---
 
-## Wiring the push path
+## Hive sharing
 
-Three event types push to Engram from a Claude Code workflow:
-
-### 1. Manual milestone push
-
-```bash
-engram-bridge push "shipped wave 2 of the bridge"
-engram-bridge push "fixed recall-tier fusion regression" --type bugfix
-engram-bridge push "deploy blocked on API key rotation" \
-    --metadata severity=p1 --metadata owner=eddy
-```
-
-Run this whenever you want Claude's future sessions to remember a
-decision, a shipped feature, or a known blocker. `--type` defaults
-to `milestone`. `--metadata key=value` can be repeated.
-
-### 2. Git post-commit hook
-
-Install once per repo:
+Hives let multiple AI agents (across platforms and devices) search
+each other's memories. Access is scoped by API key — if your key
+has a grant to a hive, you can search all memories from every
+other granted key.
 
 ```bash
-cd ~/code/my-repo
-engram-bridge install --git-hooks
-
-# or from anywhere
-engram-bridge install --git-hooks --repo ~/code/my-repo
-```
-
-The installer writes `.git/hooks/post-commit` with a one-line body:
-
-```sh
-#!/bin/sh
-# engram-bridge: push-commit
-engram-bridge push-commit >/dev/null 2>&1 || true
-```
-
-`|| true` is load-bearing — a missing or broken `engram-bridge`
-binary will never block a commit. The installer is idempotent,
-creates a timestamped backup of any existing `post-commit`, and
-detects the `# engram-bridge: push-commit` marker to avoid
-double-installing.
-
-Every commit from that point on pushes the short sha, subject,
-body, author, branch, and a `git show --stat` summary to Engram.
-
-### 3. pytest plugin
-
-Installing the bridge also registers a `pytest11` entry point, so
-the plugin auto-loads anywhere pytest can find the package. On
-every green test session (exit 0) it calls `engram-bridge push-test`
-with the suite name, wall time, and collected test count.
-
-Disable per-run with `-p no:engram_bridge`, or turn the bridge off
-in `~/.engram/config.yaml`.
-
-### 4. Shell wrappers for jest / cargo / go
-
-The bridge deliberately doesn't modify your shell rc. Paste one or
-more of these into `~/.bashrc` or `~/.zshrc`:
-
-```sh
-engram_npm_test() {
-  local start end status
-  start=$(date +%s)
-  npm test "$@"
-  status=$?
-  end=$(date +%s)
-  if [ "$status" -eq 0 ]; then
-    engram-bridge push-test "$(basename "$PWD")" \
-        "$((end - start))" "0" --runner jest >/dev/null 2>&1 || true
-  fi
-  return "$status"
-}
-alias npmtest=engram_npm_test
-```
-
-`--runner` accepts `pytest`, `jest`, `cargo`, `go`, or `custom`.
-All wrappers swallow bridge failures with `|| true` and never touch
-the runner's exit code.
-
----
-
-## Wiring hive sharing (Wave 3)
-
-Shared hive collections let you and your co-agents pull from the
-same pool of memories. Hive commands go through the bridge CLI:
-
-```bash
-# List hives your api_key already belongs to
+# List hives your api_key has access to
 engram-bridge hive list
 
-# Create a new hive — you become owner + first member in one step
+# Create a new hive — your key gets readwrite access automatically
 engram-bridge hive create "my-hive" --slug my-hive
 
-# Invite another user (owner/admin only)
-engram-bridge hive add-member <hive_uuid> <user_uuid> --role member
+# Grant another API key access to the hive
+engram-bridge hive grant <hive_uuid> <key_prefix>
 
-# Push a memory to your personal store AND fan it out to a hive
-engram-bridge push "shipped feature X" --hive <hive_uuid>
+# Revoke access
+engram-bridge hive revoke <hive_uuid> <key_prefix>
 
-# Pull context from a hive collection instead of personal
+# Pull context from a hive scope instead of personal
 engram-bridge pull --scope hive:<hive_uuid>
 ```
 
-`--hive` and `--scope hive:<id>` pass through to
-`POST /v1/store` (`share_with`) and `POST /v1/search` (`scope`)
-respectively. The cloud validates that the caller is a member of
-each listed hive and returns 403 for any hive they aren't in — the
-bridge swallows the error silently, so a revoked membership never
-breaks a commit or a session start.
+When you search with `--scope hive:<id>`, the cloud finds every
+API key granted to that hive and searches across all their
+memories. Results come back attributed by key, so you know which
+agent contributed what.
 
-> **Gap:** the `SessionStart` hook always runs `engram bridge pull`
-> with no `--scope` override, so it pulls from your personal store.
-> If you want a session to pull hive context instead, edit
+> **Tip:** to pull hive context at session start, edit
 > `~/.claude/settings.json` and change the hook command to
-> `engram bridge pull --scope hive:<hive_uuid>`. A per-project
-> `scope` config key is planned for a later wave.
+> `engram bridge pull --scope hive:<hive_uuid>`.
 
 ---
 
@@ -260,14 +172,9 @@ tools that Claude Code can call on demand:
 - `memory_connect` — discover cross-category links
 
 All seven tools talk to the **local** recall engine (Qdrant +
-FastEmbed + hash index), not the cloud. They share nothing with
-the bridge's pull/push path except the concept of a memory — if
-you want a single source of truth across session-start context and
-in-session tool calls, pick the bridge OR the MCP server, not both,
-until Wave 5 unifies them.
-
-> **Gap:** the MCP server does not yet expose hive scopes. For hive
-> sharing, stick with the bridge CLI as shown above.
+FastEmbed + hash index). If the cloud API is configured, the recall
+engine falls back to cloud on local misses — giving you access to
+hive-shared memories from other agents automatically.
 
 ---
 
