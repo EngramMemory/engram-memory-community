@@ -623,15 +623,11 @@ class EngramRecallEngine:
         vector = await self._embed(content, type="document")
 
         # Conflict detection: find near-matches that may contradict this memory
-        conflicts = await self._check_conflicts(content, [], threshold=0.75)
+        conflicts = await self._check_conflicts(content, vector.tolist(), threshold=0.75)
 
         # Cloud extension: compression, dedup, category detection
         # Runs in parallel with local processing, never blocks on failure
         cloud = await self._cloud_intelligence(content)
-        if cloud.get("dedup", {}).get("is_duplicate"):
-            logger.debug(f"Cloud dedup: skipping duplicate (similarity {cloud['dedup'].get('similarity', '?')})")
-            return doc_id, category, conflicts  # return ID but don't write — caller sees success
-
         # Local keyword classifier — free, instant, no API needed
         if category == "other":
             category = self._local_classify(content)
@@ -649,6 +645,7 @@ class EngramRecallEngine:
             "content": content,
             "category": category,
             "created_at": time.time(),
+            "stored_at": time.time(),
             "access_count": 0,
             **(metadata or {}),
         }
