@@ -530,10 +530,16 @@ class EngramMCPServer:
         result: Dict[str, Any] = {"success": False, "error": "Recall engine not available"}
         try:
             if self.engine:
+                api_key_prefix = self._api_key[:12] if self._api_key else "local"
                 doc_id, resolved_category, conflicts = await self.engine.store(
                     content=text,
                     category=category,
-                    metadata={"importance": importance, "private": private},
+                    metadata={
+                        "importance": importance,
+                        "private": private,
+                        "agent_id": api_key_prefix,
+                        "stored_at": __import__('time').time(),
+                    },
                 )
                 logger.info(f"Stored memory {doc_id} via recall engine")
                 result = {"success": True, "memory_id": doc_id, "category": resolved_category, "conflicts": conflicts}
@@ -549,7 +555,13 @@ class EngramMCPServer:
                                 "text": text,
                                 "category": resolved_category,
                                 "importance": importance,
-                                "metadata": {**({"importance": importance, "private": private}), "local_id": doc_id},
+                                "metadata": {
+                                    "importance": importance,
+                                    "private": private,
+                                    "local_id": doc_id,
+                                    "agent_id": api_key_prefix,
+                                    "stored_at": __import__('time').time(),
+                                },
                             },
                         )
                     except Exception as e:
