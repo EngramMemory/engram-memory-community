@@ -121,15 +121,29 @@ class EngramMCPServer:
                     text = mem.get("text", "")
                     if not text:
                         continue
+                    cloud_id = mem.get("id", "")
+
+                    # Skip if already hydrated (check by cloud_id in metadata)
+                    try:
+                        check = await self.engine._http.post(
+                            f"{self.engine.config.qdrant_url}/collections/{self.engine.config.collection}/points/scroll",
+                            json={"limit": 1, "filter": {"must": [{"key": "cloud_id", "match": {"value": cloud_id}}]}, "with_payload": False, "with_vector": False}
+                        )
+                        check.raise_for_status()
+                        if check.json().get("result", {}).get("points"):
+                            continue  # already exists locally
+                    except Exception:
+                        pass  # if check fails, store anyway
+
                     try:
                         await self.engine.store(
                             content=text,
-                            category=mem.get("category") or "other",
+                            category=mem.get("category"),
+                            importance=mem.get("importance", 0.5),
                             metadata={
                                 **(mem.get("metadata") or {}),
-                                "importance": mem.get("importance", 0.5),
                                 "source": "cloud_hydration",
-                                "cloud_id": mem.get("id"),
+                                "cloud_id": cloud_id,
                             },
                         )
                         pulled += 1
