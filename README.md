@@ -209,17 +209,6 @@ memory_timeline(from_date="2026-05-01", to_date="2026-05-10")
 memory_timeline(from_date="2026-01-01", to_date="2026-05-01", limit=50)
 ```
 
-**File ingestion** — ingest a PDF, DOCX, Markdown, or text file as chunked memories:
-```python
-memory_ingest("/path/to/architecture.pdf", category="fact")
-# Splits into ~500-char chunks, stores each with source_file metadata
-# Supports: .pdf, .docx, .md, .mdx, .txt, .csv, .json, .yaml
-```
-Install optional deps for full format support:
-```bash
-pip install pypdf python-docx
-```
-
 **Answer from memory** — ask a question, get an answer synthesized from your stored memories:
 ```python
 # Without ENGRAM_API_KEY — returns relevant memory context

@@ -4,7 +4,7 @@ Get Engram running in under 5 minutes.
 
 ## Prerequisites
 
-- Docker & Docker Compose
+- Docker
 - Python 3.10+
 - 4GB+ RAM
 
@@ -25,11 +25,11 @@ cd engram-memory
 bash scripts/setup.sh
 ```
 
-This deploys Qdrant (vector DB) and FastEmbed (embedding model), installs context system dependencies, and generates your OpenClaw config.
+This starts the single all-in-one `engram-memory` container (Qdrant + FastEmbed + the MCP server bundled together), installs context system dependencies, and registers the MCP server with Claude Code via `claude mcp add engrammemory -s user --transport http http://localhost:8585/mcp`. The MCP server listens on port 8585 at the `/mcp` endpoint. setup.sh also writes an OpenClaw config file (`openclaw-memory-config.json`) for OpenClaw users.
 
-## Step 3: Configure
+## Step 3: Configure (OpenClaw users)
 
-Add the generated config to `~/.openclaw/openclaw.json`:
+If you use OpenClaw, add the generated config from `openclaw-memory-config.json` to `~/.openclaw/openclaw.json`:
 
 ```json
 {

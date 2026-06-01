@@ -1,4 +1,4 @@
-# engram-py
+# engrammemory-ai
 
 Official Python SDK for the **[Engram](https://engrammemory.ai)** cloud memory API.
 
@@ -11,7 +11,7 @@ workers, or FastAPI handlers without a second SDK.
 ## Install
 
 ```bash
-pip install engram-py
+pip install engrammemory-ai
 ```
 
 Or install the in-repo copy for local development:
@@ -33,7 +33,7 @@ export ENGRAM_API_KEY=pr_live_...
 ```
 
 ```python
-from engram import EngramClient
+from engrammemory import EngramClient
 
 client = EngramClient()                # reads ENGRAM_API_KEY
 # or
@@ -45,7 +45,7 @@ client = EngramClient(api_key="pr_live_...")
 Store a memory, search for it, feed the result back:
 
 ```python
-from engram import EngramClient
+from engrammemory import EngramClient
 
 client = EngramClient()
 
@@ -67,7 +67,7 @@ key prefix. An unauthorized scope raises `EngramAPIError` with status
 403.
 
 ```python
-from engram import EngramClient
+from engrammemory import EngramClient
 
 client = EngramClient()
 
@@ -94,7 +94,7 @@ tell the cloud so it can reinforce the useful ones and penalize the
 noise. Zero LLM cost — the judgment comes from your existing pass.
 
 ```python
-from engram import EngramClient
+from engrammemory import EngramClient
 
 client = EngramClient()
 
@@ -115,7 +115,7 @@ with a single handler if you want to. More specific subclasses exist
 for the cases worth branching on.
 
 ```python
-from engram import (
+from engrammemory import (
     EngramClient,
     EngramError,
     EngramAuthError,
@@ -155,7 +155,7 @@ Everything above works the same with `AsyncEngramClient`:
 
 ```python
 import asyncio
-from engram import AsyncEngramClient
+from engrammemory import AsyncEngramClient
 
 async def main():
     async with AsyncEngramClient() as client:

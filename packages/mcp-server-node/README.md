@@ -11,7 +11,7 @@ Works with Claude Desktop, Claude Code, Cursor, Windsurf, and any MCP-compatible
 ```bash
 docker run -d --name engram-memory \
     -p 8585:8585 \
-    -v engram-data:/data \
+    -v engram_data:/data \
     engrammemory/engram-memory:latest
 ```
 
@@ -43,6 +43,8 @@ Restart Claude Desktop. The memory tools appear automatically.
 | **memory_consolidate** | Find and merge near-duplicate memories | destructive |
 | **memory_feedback** | Report which results were useful (improves recall) | write |
 | **memory_connect** | Discover cross-category connections via entity graph | read-only |
+| **memory_get** | Fetch full details for specific memory IDs | read-only |
+| **memory_timeline** | Browse recent memories chronologically | read-only |
 | **memory_graph** | Render a `{nodes, edges}` spec into a self-contained interactive HTML graph (vis.js) | write |
 
 ## Prompts

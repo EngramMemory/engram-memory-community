@@ -56,7 +56,7 @@ For multi-machine setups, replace `localhost` with the IPs of your Qdrant and Fa
 
 ```bash
 # 1. Check Qdrant is reachable
-curl http://localhost:6333/health
+curl http://localhost:6333/healthz
 
 # 2. Check FastEmbed is reachable
 curl http://localhost:11435/health

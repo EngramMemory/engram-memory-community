@@ -57,7 +57,7 @@ Universal bridge for non-OpenClaw clients:
 - `memory_recall` — Context-aware recall (higher threshold)
 - `memory_forget` — Delete by ID or search match
 
-Runs on stdio transport. Works with any MCP-compatible client.
+Exposes four transports — streamable-HTTP (`/mcp`), SSE (`/sse`), stdio, and REST. Works with any MCP-compatible client.
 
 ### 3. Local Infrastructure
 

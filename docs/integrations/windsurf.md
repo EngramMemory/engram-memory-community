@@ -3,9 +3,10 @@
 **Engram Bridge works with Windsurf (Codeium's AI IDE) via MCP plus
 the `engram-bridge` CLI + git hook + pytest plugin for the push
 path.** Windsurf's Cascade agent supports MCP natively, so the
-`memory_store` / `memory_search` / `memory_recall` tools from
-[`mcp/server.py`](../../mcp/server.py) light up in the Cascade tool
-panel as soon as you register the server.
+`memory_store` / `memory_search` / `memory_recall` tools from the
+Engram MCP server ([`mcp/server.py`](../../mcp/server.py)) light up
+in the Cascade tool panel as soon as you point it at the container's
+HTTP endpoint.
 
 Like Cursor, Windsurf has no built-in "on session start" hook, so
 pulling context at the start of a chat is done one of two ways:
@@ -32,7 +33,8 @@ pulling context at the start of a chat is done one of two ways:
   $EDITOR ~/.engram/config.yaml
   engram-bridge status
   ```
-- Python 3.10+ on `PATH` so Windsurf can spawn `mcp/server.py`.
+- The Engram container running locally so Windsurf can connect to
+  its MCP endpoint at `http://localhost:8585/mcp`.
 
 Full bridge install and config walkthrough lives in
 **[../../bridge/README.md](../../bridge/README.md)**.
@@ -49,32 +51,29 @@ Open that file (create it if it doesn't exist) and add an
 {
   "mcpServers": {
     "engrammemory": {
-      "command": "python",
-      "args": [
-        "/absolute/path/to/engram-memory/mcp/server.py"
-      ],
-      "env": {
-        "QDRANT_URL": "http://localhost:6333",
-        "FASTEMBED_URL": "http://localhost:11435",
-        "COLLECTION_NAME": "agent-memory",
-        "ENGRAM_API_KEY": "eng_live_...",
-        "ENGRAM_API_URL": "https://api.engrammemory.ai"
-      }
+      "url": "http://localhost:8585/mcp"
     }
   }
 }
 ```
 
 Restart Windsurf. In Cascade's tool panel you should see the
-seven Engram tools:
+10 Engram memory tools:
 
 - `memory_store`
 - `memory_search`
+- `memory_get`
+- `memory_timeline`
 - `memory_recall`
 - `memory_forget`
 - `memory_consolidate`
 - `memory_feedback`
 - `memory_connect`
+- `memory_answer`
+
+The server also registers 5 `hive_*` tools (`hive_list`,
+`hive_create`, `hive_grant`, `hive_revoke`, `hive_grants_list`)
+that require an `ENGRAM_API_KEY`.
 
 ### Telling Cascade to use the tools
 
@@ -209,14 +208,13 @@ context-preload step to a specific hive collection.
 Windsurf-specific checks:
 
 - In Windsurf's Cascade tool panel, is `engrammemory` listed with
-  a green dot? A red dot means the MCP server failed to start.
-  Open Windsurf → Help → Developer Tools and look for stderr from
-  the `python mcp/server.py` subprocess.
-- The most common first-run error is `Warning: Recall engine not
-  available`, which means the local `src/recall/` package isn't
-  importable. Fix by ensuring you installed the repo in editable
-  mode (`pip install -e ./bridge` from the repo root) so the
-  relative path `sys.path.insert(0, "../src/recall")` resolves.
+  a green dot? A red dot means Cascade couldn't reach the MCP
+  endpoint. Confirm the Engram container is running and that
+  `http://localhost:8585/mcp` is reachable (`curl -s
+  http://localhost:8585/health`).
+- If the container is up but the tools don't appear, verify the
+  port mapping and that nothing else is bound to `8585`, then
+  restart Windsurf.
 - If Cascade's memory tool calls succeed but the push path from
   the terminal is silent, the two config surfaces don't talk:
   the MCP server reads `ENGRAM_API_KEY` from `mcp_config.json`,

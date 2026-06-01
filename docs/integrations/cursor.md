@@ -34,7 +34,8 @@ behavior is replaced by two things you do explicitly:
   $EDITOR ~/.engram/config.yaml
   engram-bridge status
   ```
-- Python 3.10+ on `PATH` so Cursor can spawn `mcp/server.py`.
+- The Engram container running locally so Cursor can connect to its
+  MCP endpoint at `http://localhost:8585/mcp`.
 
 Full bridge install and config walkthrough lives in
 **[../../bridge/README.md](../../bridge/README.md)**.
@@ -48,39 +49,36 @@ Cursor reads MCP config from either:
 - `~/.cursor/mcp.json` — global, applies to every project
 - `<project>/.cursor/mcp.json` — per-project, checked into the repo
 
-Pick one and add an `engrammemory` entry. The server script lives
-at [`mcp/server.py`](../../mcp/server.py) inside this repo:
+Pick one and add an `engrammemory` entry that points at the running
+Engram container's MCP endpoint over streamable-HTTP:
 
 ```json
 {
   "mcpServers": {
     "engrammemory": {
-      "command": "python",
-      "args": [
-        "/absolute/path/to/engram-memory/mcp/server.py"
-      ],
-      "env": {
-        "QDRANT_URL": "http://localhost:6333",
-        "FASTEMBED_URL": "http://localhost:11435",
-        "COLLECTION_NAME": "agent-memory",
-        "ENGRAM_API_KEY": "eng_live_...",
-        "ENGRAM_API_URL": "https://api.engrammemory.ai"
-      }
+      "url": "http://localhost:8585/mcp"
     }
   }
 }
 ```
 
 Restart Cursor. You should see `engrammemory` in the MCP status
-panel with seven tools:
+panel with the 10 memory tools:
 
 - `memory_store`
 - `memory_search`
+- `memory_get`
+- `memory_timeline`
 - `memory_recall`
 - `memory_forget`
 - `memory_consolidate`
 - `memory_feedback`
 - `memory_connect`
+- `memory_answer`
+
+The server also registers 5 `hive_*` tools (`hive_list`,
+`hive_create`, `hive_grant`, `hive_revoke`, `hive_grants_list`)
+that require an `ENGRAM_API_KEY`.
 
 ### Telling Cursor to use the tools
 
@@ -235,15 +233,13 @@ to pin Cursor launches to a specific hive.
 Cursor-specific checks:
 
 - In Cursor's MCP status panel, does `engrammemory` show as
-  "connected" with seven tools? If not, the MCP command failed —
-  check Cursor's developer console (Help → Toggle Developer Tools)
-  for the stderr from `mcp/server.py`. The most common cause is a
-  missing Python dependency: run `pip install mcp` and restart
-  Cursor.
-- The MCP server prints `Warning: Recall engine not available` to
-  stderr if the local `src/recall/` package isn't importable — the
-  bridge repo needs to be on `PYTHONPATH` or installed, not just
-  cloned.
+  "connected" with 15 tools (10 memory + 5 hive)? If not, the
+  connection failed — confirm the Engram container is running and
+  that `http://localhost:8585/mcp` is reachable (`curl -s
+  http://localhost:8585/health`). Check Cursor's developer console
+  (Help → Toggle Developer Tools) for connection errors.
+- If the container is up but tools don't appear, verify the port
+  mapping and that no other process is bound to `8585`.
 - If `memory_search` works but `engram-bridge pull` doesn't, the
   two paths use different keys: the MCP server reads
   `ENGRAM_API_KEY` from the env block in `mcp.json`, while the

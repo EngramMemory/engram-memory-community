@@ -157,21 +157,28 @@ Claude Code speaks MCP. You can register the Engram MCP server in
 addition to (or instead of) the bridge's `SessionStart` hook:
 
 ```bash
-claude mcp add engrammemory -- python /path/to/engram-memory/mcp/server.py
+claude mcp add engrammemory -s user --transport http http://localhost:8585/mcp
 ```
 
-The server ([`mcp/server.py`](../../mcp/server.py)) exposes seven
-tools that Claude Code can call on demand:
+The server ([`mcp/server.py`](../../mcp/server.py)) registers 15
+tools. The 10 memory tools Claude Code can call on demand are:
 
 - `memory_store` — store text with a category + importance score
 - `memory_search` — three-tier search (hot cache → hash → vector)
+- `memory_get` — fetch a memory by id
+- `memory_timeline` — list memories in chronological order
 - `memory_recall` — same as search, higher threshold, for context
 - `memory_forget` — delete by id or by search-match
 - `memory_consolidate` — merge near-duplicates
 - `memory_feedback` — tell Engram which results were useful
 - `memory_connect` — discover cross-category links
+- `memory_answer` — answer a question from stored memories
 
-All seven tools talk to the **local** recall engine (Qdrant +
+The other 5 tools are `hive_*` tools (`hive_list`, `hive_create`,
+`hive_grant`, `hive_revoke`, `hive_grants_list`) and require an
+`ENGRAM_API_KEY`.
+
+All memory tools talk to the **local** recall engine (Qdrant +
 FastEmbed + hash index). If the cloud API is configured, the recall
 engine falls back to cloud on local misses — giving you access to
 hive-shared memories from other agents automatically.

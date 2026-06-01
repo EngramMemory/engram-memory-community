@@ -129,7 +129,7 @@ curl http://localhost:6333/collections/agent-memory
 ## Troubleshooting
 
 **Collection won't enable quantization:**
-- Check Qdrant version: `curl http://localhost:6333/health`
+- Check Qdrant version: `curl http://localhost:6333/healthz`
 - Ensure collection has vectors before enabling quantization
 - Try the backup/recreate approach instead
 
@@ -147,7 +147,7 @@ curl http://localhost:6333/collections/agent-memory
 
 If you encounter issues with quantization:
 
-1. Check Qdrant logs: `docker logs qdrant-memory`
+1. Check Qdrant logs: `docker logs engram-memory`
 2. Verify collection status: `curl http://localhost:6333/collections/agent-memory`
 3. Test with a small collection first before migrating large datasets
 

@@ -2,7 +2,7 @@
 
 **Three-Tiered Brain for AI agents. Hot-Tier cache + O(1) hash retrieval + semantic re-rank. Self-hosted. Zero API costs.**
 
-[![license](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
+[![license](https://img.shields.io/badge/license-BSL--1.1-green?style=flat-square)](LICENSE)
 [![python](https://img.shields.io/badge/python-3.10+-blue?style=flat-square)](https://www.python.org)
 [![docker](https://img.shields.io/badge/docker-required-blue?style=flat-square)](https://www.docker.com)
 
@@ -37,7 +37,7 @@ One repo, two interfaces: an **OpenClaw skill** and a **universal MCP server** t
 ┌──────────────────────────────────────────────────────────────────────┐
 │  TIER 2: MULTI-HEAD HASH INDEX                       O(1) lookup     │
 │  ──────────────────────────────                                      │
-│  Locality-Sensitive Hashing with 4 independent heads.                │
+│  Locality-Sensitive Hashing with 6 independent heads.                │
 │  Uses first 64 dims of Matryoshka vector (fast slice).               │
 │  Collision probability across all heads: ~0%.                        │
 │                                                                      │
@@ -69,7 +69,7 @@ cd engram-memory
 bash scripts/setup.sh
 ```
 
-This starts Qdrant (vector DB) and FastEmbed (local embedding model) on your machine.
+This runs a single all-in-one container `engrammemory/engram-memory:latest` that bundles Qdrant (vector DB), FastEmbed (local embedding model), and the MCP server on your machine.
 
 ### 2. Connect your agent
 
@@ -80,7 +80,7 @@ clawhub install engrammemory
 
 **Claude Code:**
 ```bash
-claude mcp add engrammemory -- python mcp/server.py
+claude mcp add engrammemory -s user --transport http http://localhost:8585/mcp
 ```
 
 **Cursor / Windsurf / VS Code** — add to `.mcp.json`:
@@ -88,8 +88,7 @@ claude mcp add engrammemory -- python mcp/server.py
 {
   "mcpServers": {
     "engrammemory": {
-      "command": "python",
-      "args": ["mcp/server.py"]
+      "url": "http://localhost:8585/mcp"
     }
   }
 }
@@ -165,7 +164,7 @@ engram-memory/
 ├── src/
 │   ├── recall_engine.py        ← Unified three-tier retrieval pipeline
 │   ├── hot_tier.py             ← Frequency-adjusted exponential decay cache
-│   ├── multi_head_hasher.py    ← LSH with 4 independent hash tables
+│   ├── multi_head_hasher.py    ← LSH with 6 independent hash tables
 │   ├── matryoshka.py           ← Variable-dimension vector slicing
 │   └── models.py               ← MemoryResult, EngramConfig dataclasses
 ├── skills/
@@ -205,8 +204,8 @@ Strength = log(hits + 1) × e^(-decay_rate × hours_since_access)
 
 Locality-Sensitive Hashing with multiple independent "heads." Each head is a random projection that maps the first 64 dimensions of the Matryoshka vector to a binary signature. A query checks all heads simultaneously — the union of matching buckets forms the candidate set.
 
-- **Heads:** 4 (Community) / 8-16 (Cloud)
-- **Hash size:** 12 bits (Community) / 16-24 bits (Cloud)
+- **Heads:** 6 (Community) / 8-16 (Cloud)
+- **Hash size:** 14 bits (Community) / 16-24 bits (Cloud)
 - **Avg response:** < 2ms (hash + re-rank)
 - **Collision triangulation:** Even if one head produces a false positive, the others correct it
 
@@ -280,8 +279,8 @@ ENGRAM_EMBEDDING_URL=http://localhost:11435
 | `minRecallScore` | `0.35` | Minimum similarity threshold |
 | `hotTierMaxSize` | `1000` | Max memories in hot-tier cache |
 | `hotTierDecayRate` | `0.1` | Decay λ (0.1 = 50% strength after ~7hrs) |
-| `hasherNumHeads` | `4` | Number of LSH heads |
-| `hasherHashSize` | `12` | Bits per hash signature |
+| `hasherNumHeads` | `6` | Number of LSH heads |
+| `hasherHashSize` | `14` | Bits per hash signature |
 | `debug` | `false` | Enable debug logging |
 
 ---
@@ -327,7 +326,7 @@ The Community Edition is genuinely powerful. Engram Cloud is for when you outgro
 |---|---|---|
 | Three-tier recall | ✓ | ✓ |
 | Hot-Tier cache | 1,000 entries | Unlimited |
-| Multi-Head Hashing | 4 heads, 12-bit | 8-16 heads, 16-24 bit, auto-tuning |
+| Multi-Head Hashing | 6 heads, 14-bit | 8-16 heads, 16-24 bit, auto-tuning |
 | Matryoshka slicing | 64 / 768 dim | Any dimension |
 | Auto-recall + auto-capture | ✓ | ✓ |
 | Memory categories | ✓ | ✓ |
@@ -351,10 +350,10 @@ If you want the cloud-managed version with TurboQuant, dedup, and fleet manageme
 
 ```bash
 # Python
-pip install engram-cloud
+pip install engrammemory-ai
 
 # Node.js
-npm install engram-cloud
+npm install engrammemory-ai
 ```
 
 ```python
@@ -368,8 +367,8 @@ client.store("User prefers TypeScript", category="preference")
 results = client.search("language preferences")
 ```
 
-- [Python SDK on PyPI](https://pypi.org/project/engram-cloud/)
-- [Node SDK on npm](https://www.npmjs.com/package/engram-cloud)
+- [Python SDK on PyPI](https://pypi.org/project/engrammemory-ai/)
+- [Node SDK on npm](https://www.npmjs.com/package/engrammemory-ai)
 
 ---
 
@@ -386,15 +385,15 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 - **Website:** [engrammemory.ai](https://engrammemory.ai)
 - **Dashboard:** [app.engrammemory.ai](https://app.engrammemory.ai)
 - **API Docs:** [api.engrammemory.ai/docs](https://api.engrammemory.ai/docs)
-- **Python SDK:** [pypi.org/project/engram-cloud](https://pypi.org/project/engram-cloud/)
-- **Node SDK:** [npmjs.com/package/engram-cloud](https://www.npmjs.com/package/engram-cloud)
+- **Python SDK:** [pypi.org/project/engrammemory-ai](https://pypi.org/project/engrammemory-ai/)
+- **Node SDK:** [npmjs.com/package/engrammemory-ai](https://www.npmjs.com/package/engrammemory-ai)
 - **Discord:** [discord.gg/engram](https://discord.gg/engram)
 
 ---
 
 ## License
 
-MIT — Use freely in personal and commercial projects.
+BSL-1.1 — Business Source License 1.1.
 
 ---
 

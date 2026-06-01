@@ -174,21 +174,33 @@ async def health():
 
 @app.get("/tools")
 async def list_tools():
-    """List available MCP tools (informational, not part of the MCP protocol)."""
+    """List available MCP tools (informational, not part of the MCP protocol).
+
+    Source of truth is the tool registry in mcp/server.py (_register_tools).
+    Keep this list in sync with it. The hive_* tools require ENGRAM_API_KEY.
+    """
     return {
         "tools": [
-            {"name": "memory_store", "description": "Store a memory"},
-            {"name": "memory_search", "description": "Search memories (three-tier recall)"},
-            {"name": "memory_recall", "description": "Recall memories for context injection"},
-            {"name": "memory_forget", "description": "Delete a memory"},
-            {"name": "memory_consolidate", "description": "Merge near-duplicate memories"},
-            {"name": "memory_connect", "description": "Discover cross-category connections"},
-            {"name": "memory_feedback", "description": "Report which search results were useful"},
+            {"name": "memory_store", "description": "Store a memory with semantic embedding (indexed into hot-tier cache and hash index)"},
+            {"name": "memory_search", "description": "Search memories using three-tier recall; results include match_context"},
+            {"name": "memory_get", "description": "Fetch full details for specific memory IDs (use after memory_search)"},
+            {"name": "memory_timeline", "description": "Browse recent memories chronologically (sorted by creation time)"},
+            {"name": "memory_recall", "description": "Recall relevant memories for context injection (higher threshold, for auto-recall)"},
+            {"name": "memory_forget", "description": "Delete a memory from all tiers (hot cache, hash index, vector store)"},
+            {"name": "memory_consolidate", "description": "Find and merge near-duplicate memories"},
+            {"name": "memory_feedback", "description": "Report which search results were useful to improve future recall"},
+            {"name": "memory_connect", "description": "Discover cross-category connections for a memory via the entity graph"},
+            {"name": "memory_answer", "description": "Answer a question using stored memories (synthesizes via Engram Cloud when ENGRAM_API_KEY is set)"},
+            {"name": "hive_list", "description": "List all hives the authenticated user has access to (requires ENGRAM_API_KEY)"},
+            {"name": "hive_create", "description": "Create a new shared memory hive (requires ENGRAM_API_KEY)"},
+            {"name": "hive_grant", "description": "Grant an API key prefix access to a hive (requires ENGRAM_API_KEY)"},
+            {"name": "hive_revoke", "description": "Revoke an API key prefix's access to a hive (requires ENGRAM_API_KEY)"},
+            {"name": "hive_grants_list", "description": "List all active grants for a hive (requires ENGRAM_API_KEY)"},
         ],
         "transports": {
             "streamable_http": "/mcp",
             "sse": "/sse",
-            "rest": ["/store", "/search", "/recall", "/forget", "/consolidate", "/connect", "/feedback"],
+            "rest": ["/store", "/search", "/forget", "/consolidate", "/connect", "/feedback"],
         },
     }
 

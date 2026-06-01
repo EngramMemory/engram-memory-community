@@ -3,9 +3,10 @@
 **Engram Bridge works with Continue via MCP for the read path plus
 the `engram-bridge` CLI + git hook + pytest plugin for the push
 path.** Continue supports MCP servers in its `config.json` under
-`experimental.modelContextProtocolServers`, so the seven Engram
-tools from [`mcp/server.py`](../../mcp/server.py) show up in the
-Continue tool menu for both the VS Code and JetBrains extensions.
+`experimental.modelContextProtocolServers`, so the Engram memory
+tools from the MCP server ([`mcp/server.py`](../../mcp/server.py))
+show up in the Continue tool menu for both the VS Code and
+JetBrains extensions.
 
 Continue has no "on session start" hook, so the automatic-context
 behavior is replaced by a Continue slash command or rule that
@@ -28,7 +29,8 @@ calls `memory_recall` on turn 1.
   $EDITOR ~/.engram/config.yaml
   engram-bridge status
   ```
-- Python 3.10+ on `PATH` so Continue can spawn `mcp/server.py`.
+- The Engram container running locally so Continue can connect to
+  its MCP endpoint at `http://localhost:8585/mcp`.
 
 Full bridge install and config walkthrough lives in
 **[../../bridge/README.md](../../bridge/README.md)**.
@@ -40,7 +42,7 @@ Full bridge install and config walkthrough lives in
 Continue reads MCP config from `~/.continue/config.json`. Open
 the file (or create it) and add an `experimental.modelContextProtocolServers`
 entry. Continue's schema wraps each server under a `transport`
-object:
+object — point it at the running Engram container's HTTP endpoint:
 
 ```json
 {
@@ -48,18 +50,8 @@ object:
     "modelContextProtocolServers": [
       {
         "transport": {
-          "type": "stdio",
-          "command": "python",
-          "args": [
-            "/absolute/path/to/engram-memory/mcp/server.py"
-          ],
-          "env": {
-            "QDRANT_URL": "http://localhost:6333",
-            "FASTEMBED_URL": "http://localhost:11435",
-            "COLLECTION_NAME": "agent-memory",
-            "ENGRAM_API_KEY": "eng_live_...",
-            "ENGRAM_API_URL": "https://api.engrammemory.ai"
-          }
+          "type": "streamable-http",
+          "url": "http://localhost:8585/mcp"
         }
       }
     ]
@@ -69,15 +61,22 @@ object:
 
 Save and reload Continue (Command Palette → `Continue: Reload
 Window` in VS Code, or Tools → Reload in JetBrains). The tool
-menu should now list:
+menu should now list the 10 memory tools:
 
 - `memory_store`
 - `memory_search`
+- `memory_get`
+- `memory_timeline`
 - `memory_recall`
 - `memory_forget`
 - `memory_consolidate`
 - `memory_feedback`
 - `memory_connect`
+- `memory_answer`
+
+The server also registers 5 `hive_*` tools (`hive_list`,
+`hive_create`, `hive_grant`, `hive_revoke`, `hive_grants_list`)
+that require an `ENGRAM_API_KEY`.
 
 ### Telling Continue to use the tools
 
@@ -210,10 +209,9 @@ Continue-specific checks:
   see the tool menu populate after reload, update Continue to the
   latest version — MCP wiring changes with almost every release.
 - VS Code: open the "Continue" output channel (View → Output →
-  Continue) to see the MCP server's stderr. `ImportError: mcp`
-  means `pip install mcp` is missing from the Python interpreter
-  that Continue is spawning. Use an absolute path to a venv'd
-  Python in the `command` field if your system Python isn't the
-  one you installed the bridge into.
+  Continue) to see MCP connection errors. If Continue can't reach
+  the endpoint, confirm the Engram container is running and that
+  `http://localhost:8585/mcp` is reachable (`curl -s
+  http://localhost:8585/health`).
 - JetBrains: logs live under Help → Show Log in Files, look for
   entries tagged `Continue`.

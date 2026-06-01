@@ -46,27 +46,37 @@ and configuration steps live in **[../../bridge/README.md](../../bridge/README.m
   and `--scope hive:<id>` on pull. The MCP tools don't yet expose
   hive scopes — see the **MCP gap** note below.
 - **Native MCP** — does the agent support the Model Context Protocol
-  out of the box? If yes, you can point it at the Engram MCP server at
-  `mcp/server.py` and get the seven memory tools (`memory_store`,
-  `memory_search`, `memory_recall`, `memory_forget`, `memory_consolidate`,
-  `memory_feedback`, `memory_connect`) without touching the bridge CLI.
+  out of the box? If yes, you can point it at the running Engram
+  container's MCP endpoint (`http://localhost:8585/mcp`) and get the
+  10 memory tools (`memory_store`, `memory_search`, `memory_get`,
+  `memory_timeline`, `memory_recall`, `memory_forget`,
+  `memory_consolidate`, `memory_feedback`, `memory_connect`,
+  `memory_answer`) without touching the bridge CLI. 5 additional
+  `hive_*` tools are also registered but require an `ENGRAM_API_KEY`.
 
 ---
 
 ## MCP gap (Wave 3 hives)
 
-The Engram MCP server at
-[`mcp/server.py`](../../mcp/server.py) exposes seven tools today:
+The Engram MCP server (source: [`mcp/server.py`](../../mcp/server.py),
+reached over streamable-HTTP at `http://localhost:8585/mcp`) registers
+15 tools. The 10 memory tools are:
 
 1. `memory_store`
 2. `memory_search`
-3. `memory_recall`
-4. `memory_forget`
-5. `memory_consolidate`
-6. `memory_feedback`
-7. `memory_connect`
+3. `memory_get`
+4. `memory_timeline`
+5. `memory_recall`
+6. `memory_forget`
+7. `memory_consolidate`
+8. `memory_feedback`
+9. `memory_connect`
+10. `memory_answer`
 
-None of them accept a `scope` or `hive_id` argument yet — the MCP
+Plus 5 `hive_*` tools (`hive_list`, `hive_create`, `hive_grant`,
+`hive_revoke`, `hive_grants_list`) that require an `ENGRAM_API_KEY`.
+
+None of the memory tools accept a `scope` or `hive_id` argument yet — the MCP
 server currently only reads/writes the per-user collection. If you
 need to push to or pull from a shared hive, use the bridge CLI:
 

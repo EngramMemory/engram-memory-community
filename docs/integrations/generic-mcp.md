@@ -1,15 +1,16 @@
 # Generic MCP client
 
 **Engram works with any MCP-compatible client via the Engram MCP
-server at [`mcp/server.py`](../../mcp/server.py).** This page is
+server ([`mcp/server.py`](../../mcp/server.py)), reached over
+streamable-HTTP at `http://localhost:8585/mcp`.** This page is
 for agents not explicitly called out in the other integration
-docs — anything that speaks the Model Context Protocol over stdio
-and can spawn a Python subprocess.
+docs — anything that speaks the Model Context Protocol and can
+connect to a remote HTTP endpoint.
 
-The MCP server exposes seven tools that run against the local
-recall engine (Qdrant + FastEmbed + hash index). The push path
-runs alongside it as the `engram-bridge` CLI + git hook + pytest
-plugin, exactly as it does for every other agent.
+The MCP server registers 15 tools (10 memory + 5 hive) that run
+against the local recall engine (Qdrant + FastEmbed + hash index).
+The push path runs alongside it as the `engram-bridge` CLI + git
+hook + pytest plugin, exactly as it does for every other agent.
 
 ---
 
@@ -28,12 +29,15 @@ plugin, exactly as it does for every other agent.
   $EDITOR ~/.engram/config.yaml
   engram-bridge status
   ```
-- Python 3.10+ and the `mcp` Python package
-  (`pip install mcp`).
-- A running local recall engine — either the all-in-one
-  `engrammemory/engram-memory` Docker container, or Qdrant at
-  `localhost:6333` + FastEmbed at `localhost:11435` configured
-  from your own compose file.
+- The all-in-one `engrammemory/engram-memory` Docker container
+  running locally, exposing its MCP endpoint at
+  `http://localhost:8585/mcp`:
+  ```bash
+  docker run -d --name engram-memory --restart unless-stopped \
+      -p 6333:6333 -p 11435:11435 -p 8585:8585 \
+      -v engram_data:/data \
+      engrammemory/engram-memory:latest
+  ```
 
 Full bridge install and config walkthrough lives in
 **[../../bridge/README.md](../../bridge/README.md)**.
@@ -43,54 +47,55 @@ Full bridge install and config walkthrough lives in
 ## Wiring the read path
 
 Every MCP client has its own config file, but the server entry
-always looks the same. Tell your client to launch Python with
-`mcp/server.py` as the script and stdio as the transport:
+always points at the running container's streamable-HTTP endpoint:
 
 ```json
 {
   "mcpServers": {
     "engrammemory": {
-      "command": "python",
-      "args": [
-        "/absolute/path/to/engram-memory/mcp/server.py"
-      ],
-      "env": {
-        "QDRANT_URL": "http://localhost:6333",
-        "FASTEMBED_URL": "http://localhost:11435",
-        "COLLECTION_NAME": "agent-memory",
-        "ENGRAM_API_KEY": "eng_live_...",
-        "ENGRAM_API_URL": "https://api.engrammemory.ai"
-      }
+      "url": "http://localhost:8585/mcp"
     }
   }
 }
 ```
 
-Some clients nest the server under a different key
-(`experimental.modelContextProtocolServers` for Continue,
-`transport: { type: "stdio" }` wrappers for others) — check your
-client's docs for the exact schema. The **three fields that
-matter** are always:
+Clients that still speak the legacy SSE transport can use
+`http://localhost:8585/sse` instead.
 
-1. `command` → `python`
-2. `args` → the absolute path to `mcp/server.py`
-3. `env` → `QDRANT_URL`, `FASTEMBED_URL`, `COLLECTION_NAME`, and
-   optionally `ENGRAM_API_KEY` / `ENGRAM_API_URL` if your agent
-   needs the cloud-backed variants.
+Some clients nest the server under a different key
+(`experimental.modelContextProtocolServers` for Continue, a
+`transport` object for others) — check your client's docs for the
+exact schema. The **one field that matters** is always the
+endpoint URL: `http://localhost:8585/mcp` (or the legacy
+`http://localhost:8585/sse`).
 
 ### Tools advertised by the server
 
-Once the server is connected, the client sees seven tools:
+Once the server is connected, the client sees 15 tools. The 10
+memory tools are:
 
 | Tool | Purpose |
 |---|---|
 | `memory_store` | Store a memory with `text`, `category` (`preference` / `fact` / `decision` / `entity` / `other`), and `importance` (0-1) |
 | `memory_search` | Three-tier search (hot cache → hash → vector) for a free-form `query`, optional `limit` and `category` filter |
+| `memory_get` | Fetch a single memory by `memory_id` |
+| `memory_timeline` | List memories in chronological order |
 | `memory_recall` | Same as search, tuned for context injection — use this on turn 1 for "what do you know about this task" |
 | `memory_forget` | Delete by `memory_id` (UUID) or by `query` (deletes the best match) |
 | `memory_consolidate` | Janitor: merge near-duplicate memories at a fixed 0.95 similarity threshold (Community tier) |
 | `memory_feedback` | Tell Engram which search results were useful — improves future recall ranking at zero cost |
 | `memory_connect` | Discover cross-category links for a memory; capped at 3 connections per call on the Community tier |
+| `memory_answer` | Answer a free-form question using stored memories |
+
+Plus 5 `hive_*` tools that require an `ENGRAM_API_KEY`:
+
+| Tool | Purpose |
+|---|---|
+| `hive_list` | List hives the API key can access |
+| `hive_create` | Create a new hive |
+| `hive_grant` | Grant another API key access to a hive |
+| `hive_revoke` | Revoke a key's access to a hive |
+| `hive_grants_list` | List the grants on a hive |
 
 The full JSON schema for every tool is at the top of
 [`mcp/server.py`](../../mcp/server.py) in the `_register_tools`
@@ -202,20 +207,20 @@ engram-bridge pull --scope hive:<hive_uuid>
 
 MCP-specific checks:
 
-- If your client can't connect to `engrammemory`, run the server
-  by hand to see its startup log:
+- If your client can't connect to `engrammemory`, confirm the
+  container is running and the MCP endpoint is reachable:
   ```bash
-  python /path/to/engram-memory/mcp/server.py
+  docker ps | grep engram-memory
+  curl -s http://localhost:8585/health
   ```
-  You should see lines like `Engram MCP Server initialized`,
-  `Qdrant: http://localhost:6333`, and `Recall engine warmed up`.
-  If you see `Warning: Recall engine not available`, the local
-  `src/recall/` package isn't importable — install the repo in
-  editable mode (`pip install -e ./bridge`) from the repo root.
-- If you see `Error: mcp package not found`, run
-  `pip install mcp` into the Python interpreter your client
-  spawns. Use an absolute path to a venv Python in `command` if
-  your system Python isn't the one with `mcp` installed.
-- Clients that auto-restart MCP servers on config change can
-  leak orphan processes. If `ps aux | grep mcp/server.py` shows
-  more than one copy, kill them and reload the client cleanly.
+  A healthy container responds on `http://localhost:8585/mcp`.
+- If the health check fails, check the container logs:
+  ```bash
+  docker logs engram-memory
+  ```
+  Look for `Engram MCP Server initialized` and `Recall engine
+  warmed up`.
+- If your client only supports stdio, you can bridge to the
+  container's server with
+  `docker exec -i engram-memory python /app/mcp_server.py`, but
+  prefer the HTTP endpoint above.

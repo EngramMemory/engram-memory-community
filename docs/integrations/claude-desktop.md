@@ -2,9 +2,11 @@
 
 **Claude Desktop supports local MCP servers natively.** Add your
 Engram Memory MCP server to the desktop config and restart — you
-get all seven memory tools (`memory_store`, `memory_search`,
-`memory_recall`, `memory_forget`, `memory_consolidate`,
-`memory_feedback`, `memory_connect`) directly in conversation.
+get all 10 memory tools (`memory_store`, `memory_search`,
+`memory_get`, `memory_timeline`, `memory_recall`, `memory_forget`,
+`memory_consolidate`, `memory_feedback`, `memory_connect`,
+`memory_answer`) directly in conversation. (The server also
+registers 5 `hive_*` tools that require an `ENGRAM_API_KEY`.)
 
 ---
 
@@ -12,9 +14,9 @@ get all seven memory tools (`memory_store`, `memory_search`,
 
 - Engram Memory container running locally:
   ```bash
-  docker run -d --name engram-memory \
-      -p 8585:8585 \
-      -v engram-data:/data \
+  docker run -d --name engram-memory --restart unless-stopped \
+      -p 6333:6333 -p 11435:11435 -p 8585:8585 \
+      -v engram_data:/data \
       engrammemory/engram-memory:latest
   ```
 - Verify it's up: `curl -s http://localhost:8585/health`
@@ -112,7 +114,7 @@ machine. If you've already configured Engram as an MCP server in
 Claude Code:
 
 ```bash
-claude mcp add engrammemory -- python /path/to/mcp/server.py
+claude mcp add engrammemory -s user --transport http http://localhost:8585/mcp
 ```
 
 …the server is available to both. However, Claude Desktop uses

@@ -485,7 +485,7 @@ memory_store("User prefers detailed explanations", "preference", 0.8)
 ### Implementation
 
 - **Plugin Type:** Native Python plugin
-- **Backend:** FastEmbed (localhost:8000) + Qdrant (localhost:6333)
+- **Backend:** FastEmbed (localhost:11435) + Qdrant (localhost:6333)
 - **No MCP Server Required:** Direct integration through OpenClaw's plugin system
 
 See [OPENCLAW_INTEGRATION.md](OPENCLAW_INTEGRATION.md) for complete technical details.
