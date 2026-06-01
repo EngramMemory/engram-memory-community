@@ -44,3 +44,6 @@ __pycache__/
 
 # Claude
 .claude/
+
+# Local deployment config (Brain 1 — not tracked upstream)
+docker-compose.yml
