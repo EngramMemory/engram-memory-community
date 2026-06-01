@@ -324,7 +324,7 @@ export class EngramClient {
 }
 
 // Re-export error classes so callers can `import { EngramClient,
-// EngramAuthError } from "@engram/sdk"` without a second import line.
+// EngramAuthError } from "engrammemory-ai"` without a second import line.
 export {
   EngramAPIError,
   EngramAuthError,

@@ -1,5 +1,5 @@
 {
-  "name": "@engram/sdk",
+  "name": "engrammemory-ai",
   "version": "0.1.0",
   "description": "Official TypeScript SDK for the Engram Memory API — zero-dependency, works in Node 18+, browsers, Cloudflare Workers, Deno, and Bun.",
   "license": "MIT",

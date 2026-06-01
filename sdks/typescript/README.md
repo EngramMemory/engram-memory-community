@@ -1,4 +1,4 @@
-# @engram/sdk
+# engrammemory-ai
 
 Official TypeScript SDK for the [Engram Memory](https://engrammemory.ai) API.
 
@@ -9,17 +9,17 @@ TypeScript definitions.
 ## Install
 
 ```bash
-npm install @engram/sdk
+npm install engrammemory-ai
 # or
-pnpm add @engram/sdk
+pnpm add engrammemory-ai
 # or
-yarn add @engram/sdk
+yarn add engrammemory-ai
 ```
 
 ## Quick start
 
 ```ts
-import { EngramClient } from "@engram/sdk";
+import { EngramClient } from "engrammemory-ai";
 
 const client = new EngramClient({ apiKey: process.env.ENGRAM_API_KEY! });
 
@@ -67,7 +67,7 @@ new EngramClient({
 ## Error handling
 
 ```ts
-import { EngramAuthError, EngramRateLimitError, EngramAPIError } from "@engram/sdk";
+import { EngramAuthError, EngramRateLimitError, EngramAPIError } from "engrammemory-ai";
 
 try {
   await client.store({ text: "..." });

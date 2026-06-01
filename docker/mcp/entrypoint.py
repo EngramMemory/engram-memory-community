@@ -120,7 +120,7 @@ async def lifespan(app: FastAPI):
     await mcp_server.shutdown()
 
 
-app = FastAPI(title="Engram Memory MCP Server", version="2.1.0", lifespan=lifespan)
+app = FastAPI(title="Engram Memory MCP Server", version="2.4.0", lifespan=lifespan)
 register_dashboard_routes(app, mcp_server)
 
 

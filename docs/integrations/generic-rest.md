@@ -51,19 +51,19 @@ management features.
 ## Prefer a typed client?
 
 If you're writing TypeScript / JavaScript, the
-[`@engram/sdk`](../../sdks/typescript/README.md) package wraps the
+[`engrammemory-ai`](../../sdks/typescript/README.md) package wraps the
 same REST endpoints with a typed client, retries with backoff,
 and classified errors (`EngramAuthError`, `EngramRateLimitError`,
 `EngramAPIError`, `EngramConnectionError`). Install it with:
 
 ```bash
-npm install @engram/sdk
+npm install engrammemory-ai
 ```
 
 Then the read/push/hive examples below become:
 
 ```ts
-import { EngramClient } from "@engram/sdk";
+import { EngramClient } from "engrammemory-ai";
 
 const client = new EngramClient({
   apiKey: process.env.ENGRAM_API_KEY!,

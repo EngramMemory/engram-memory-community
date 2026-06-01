@@ -1,5 +1,5 @@
 /**
- * Public entry point for @engram/sdk.
+ * Public entry point for engrammemory-ai.
  *
  * The SDK exports the client, every error class, and all
  * request/response types. Types are re-exported with `export type`
