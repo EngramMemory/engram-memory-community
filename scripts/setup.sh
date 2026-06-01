@@ -34,7 +34,6 @@ check_prereq() {
 
 echo "Checking prerequisites..."
 check_prereq "docker" "Docker"
-check_prereq "docker-compose" "Docker Compose"
 
 # Check Docker is running
 if ! docker info &> /dev/null; then
@@ -61,118 +60,39 @@ fi
 mkdir -p "$SETUP_DIR"
 cd "$SETUP_DIR"
 
-# Generate docker-compose.yml
-echo ""
-echo -e "${BLUE}Generating docker-compose.yml...${NC}"
-
-# Decide whether to pull the published image or build from source.
-# Default: pull from Docker Hub (works for everyone, no clone required).
-# Fallback: build from local source (for air-gapped or modified setups).
+# Deploy the all-in-one image. Engram ships as ONE image that bundles
+# Qdrant + FastEmbed + the MCP HTTP server — there is no multi-container
+# stack. Default: pull from Docker Hub. Set ENGRAM_BUILD_LOCAL=1 to build
+# from local source instead (for air-gapped or modified setups).
 ENGRAM_IMAGE="engrammemory/engram-memory:latest"
-USE_LOCAL_BUILD=false
 
-if [ -f "$ENGRAM_REPO_DIR/docker/all-in-one/Dockerfile" ] && [ "${ENGRAM_BUILD_LOCAL:-0}" = "1" ]; then
-    echo "  ENGRAM_BUILD_LOCAL=1 set — building from local source"
-    USE_LOCAL_BUILD=true
-fi
-
-if [ "$USE_LOCAL_BUILD" = true ]; then
-    cat > docker-compose.yml << EOF
-# Engram Memory — single all-in-one container (built from local source)
-services:
-  engram:
-    build:
-      context: ${ENGRAM_REPO_DIR}
-      dockerfile: docker/all-in-one/Dockerfile
-    image: engrammemory/engram-memory:latest
-    container_name: engram-memory
-    restart: unless-stopped
-    ports:
-      - "6333:6333"   # Qdrant HTTP
-      - "6334:6334"   # Qdrant gRPC
-      - "11435:11435" # FastEmbed
-      - "8585:8585"   # MCP HTTP server
-    volumes:
-      - engram_data:/data
-    environment:
-      - QDRANT_URL=http://localhost:6333
-      - FASTEMBED_URL=http://localhost:11435
-      - COLLECTION_NAME=agent-memory
-      - DATA_DIR=/data/engram
-      - MODEL_NAME=nomic-ai/nomic-embed-text-v1.5
-    healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8585/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 120s
-    deploy:
-      resources:
-        limits:
-          memory: 3G
-        reservations:
-          memory: 1G
-
-volumes:
-  engram_data:
-    driver: local
-EOF
-else
-    cat > docker-compose.yml << EOF
-# Engram Memory — single all-in-one container (pulled from Docker Hub)
-#
-# Bundles Qdrant + FastEmbed + MCP HTTP server in one image. Same product
-# as the previous 3-service setup, packaged as one image. All ports are
-# exposed on the host for backward compatibility with any existing clients
-# (OpenClaw plugin, REST consumers, MCP clients).
-#
-# To build from local source instead of pulling, run setup.sh with
-# ENGRAM_BUILD_LOCAL=1 in the environment.
-services:
-  engram:
-    image: ${ENGRAM_IMAGE}
-    container_name: engram-memory
-    restart: unless-stopped
-    ports:
-      - "6333:6333"   # Qdrant HTTP
-      - "6334:6334"   # Qdrant gRPC
-      - "11435:11435" # FastEmbed
-      - "8585:8585"   # MCP HTTP server
-    volumes:
-      - engram_data:/data
-    environment:
-      - QDRANT_URL=http://localhost:6333
-      - FASTEMBED_URL=http://localhost:11435
-      - COLLECTION_NAME=agent-memory
-      - DATA_DIR=/data/engram
-      - MODEL_NAME=nomic-ai/nomic-embed-text-v1.5
-    healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8585/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 120s
-    deploy:
-      resources:
-        limits:
-          memory: 3G
-        reservations:
-          memory: 1G
-
-volumes:
-  engram_data:
-    driver: local
-EOF
-fi
-
-echo -e "${GREEN}docker-compose.yml created${NC}"
-
-# Start services
 echo ""
-echo -e "${BLUE}Starting Engram services...${NC}"
-echo "This may take a few minutes on first run (downloading models)..."
+if [ "${ENGRAM_BUILD_LOCAL:-0}" = "1" ] && [ -f "$ENGRAM_REPO_DIR/docker/all-in-one/Dockerfile" ]; then
+    echo -e "${BLUE}Building all-in-one image from local source...${NC}"
+    docker build -f "$ENGRAM_REPO_DIR/docker/all-in-one/Dockerfile" \
+        -t "$ENGRAM_IMAGE" "$ENGRAM_REPO_DIR"
+else
+    echo -e "${BLUE}Pulling $ENGRAM_IMAGE...${NC}"
+    docker pull "$ENGRAM_IMAGE"
+fi
 
-docker-compose up -d
+# Start the container. Removing any existing container is safe — the
+# named volume engram_data persists independently, so no memories are lost.
+echo ""
+echo -e "${BLUE}Starting Engram...${NC}"
+echo "This may take a few minutes on first run (downloading the embedding model)..."
+
+docker rm -f engram-memory >/dev/null 2>&1 || true
+docker run -d \
+    --name engram-memory \
+    --restart unless-stopped \
+    -p 6333:6333 \
+    -p 6334:6334 \
+    -p 11435:11435 \
+    -p 8585:8585 \
+    -v engram_data:/data \
+    ${ENGRAM_API_KEY:+-e ENGRAM_API_KEY="$ENGRAM_API_KEY"} \
+    "$ENGRAM_IMAGE"
 
 # Wait for services to be healthy
 echo ""
@@ -188,7 +108,7 @@ wait_for_service() {
     while ! curl -s "$url" > /dev/null 2>&1; do
         if [ $count -ge $timeout ]; then
             echo -e "\n${RED}Timeout waiting for $service${NC}"
-            echo "Check logs with: docker-compose logs $service"
+            echo "Check logs with: docker logs engram-memory"
             exit 1
         fi
         echo -n "."
@@ -379,8 +299,9 @@ echo "   Qdrant Web UI: http://localhost:6333/dashboard"
 echo "   FastEmbed API: http://localhost:11435/docs"
 echo ""
 echo -e "${YELLOW}Management:${NC}"
-echo "   Start:   docker-compose up -d"
-echo "   Stop:    docker-compose down"
-echo "   Logs:    docker-compose logs -f"
+echo "   Start:   docker start engram-memory"
+echo "   Stop:    docker stop engram-memory"
+echo "   Restart: docker restart engram-memory"
+echo "   Logs:    docker logs -f engram-memory"
 echo ""
 echo -e "${GREEN}Your agent now has persistent memory and context awareness.${NC}"

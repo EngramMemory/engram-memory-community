@@ -176,11 +176,9 @@ engram-memory/
 │   ├── memory_store.py         ← Store with three-tier indexing
 │   ├── memory_search.py        ← Three-tier retrieval flow
 │   ├── fastembed_service.py    ← Local embedding API
-│   └── setup.sh                ← Docker setup script
+│   └── setup.sh                ← Single-image deploy script
 ├── docker/
-│   └── fastembed/              ← FastEmbed Docker image
-├── config/
-│   └── docker-compose.yml
+│   └── all-in-one/             ← The one image: Qdrant + FastEmbed + MCP
 ├── tests/
 │   └── test_three_tiers.py     ← 39 tests covering all three tiers
 ├── README.md
@@ -317,7 +315,7 @@ Engram is local-only. No data leaves your machine.
 - **Three-tier state** (hot-tier cache + hash index) is persisted to `.engram/` in your project directory
 - **No telemetry, no phone-home, no external API calls**
 
-The Docker image `engrammemory/fastembed` is built from `docker/fastembed/Dockerfile` in this repo. You can verify or rebuild it yourself.
+The Docker image `engrammemory/engram-memory` is built from `docker/all-in-one/Dockerfile` in this repo — one image bundling Qdrant, FastEmbed, and the MCP server. You can verify or rebuild it yourself.
 
 ---
 

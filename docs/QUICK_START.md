@@ -89,13 +89,13 @@ sudo lsof -i :11435
 
 **Docker issues:**
 ```bash
-docker-compose down && docker-compose up -d
+docker restart engram-memory
 ```
 
 **Memory tools not available:**
 1. Verify plugin config in `~/.openclaw/openclaw.json`
 2. Check `openclaw status` for plugin errors
-3. Ensure services are running: `docker-compose ps`
+3. Ensure the container is running: `docker ps --filter name=engram-memory`
 
 ## Next Steps
 

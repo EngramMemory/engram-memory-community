@@ -172,7 +172,7 @@ All context queries are scoped to the current project.
 
 ### Prerequisites
 - OpenClaw 2026.3.13+
-- Docker and docker-compose
+- Docker
 - 4GB+ RAM for embedding model
 - 10GB+ storage for vector database
 
@@ -197,12 +197,12 @@ openclaw gateway restart
 
 If you prefer manual installation or need custom configuration:
 
-1. **Deploy Qdrant + FastEmbed:**
+1. **Deploy Engram (one container — Qdrant + FastEmbed + MCP bundled):**
    ```bash
-   # Copy docker-compose template
-   cp config/docker-compose.yml ~/engram-stack/
-   cd ~/engram-stack
-   docker-compose up -d
+   docker run -d --name engram-memory --restart unless-stopped \
+     -p 6333:6333 -p 11435:11435 -p 8585:8585 \
+     -v engram_data:/data \
+     engrammemory/engram-memory:latest
    ```
 
 2. **Configure OpenClaw plugin:**
