@@ -82,7 +82,7 @@ class EngramMCPServer:
         self._api_key = config.api_key
         self._api_url = config.api_url
         self.engine: Optional[EngramRecallEngine] = None
-        self.server = Server("engrammemory")
+        self.server = Server("engrammemory", version="2.4.0")
         self._register_tools()
 
         logger.info("Engram MCP Server initialized:")
